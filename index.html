@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Reforge Planner</title>
+    <meta name="description" content="Optimize Cataclysm reforging, stat breakpoints, and candidate gear combinations." />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">Cataclysm gear optimizer</div>
+          <div class="brand-title">
+            <img class="brand-mark" src="assets/reforge-mark.svg" alt="" aria-hidden="true" />
+            <h1>Reforge Planner</h1>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <button type="button" class="secondary" id="openImport">
+            Import JSON
+          </button>
+          <button type="button" class="secondary" id="exportJson">
+            Export JSON
+          </button>
+        </div>
+      </header>
+      <div class="grid">
+        <aside class="stack">
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h2>Stat Weights</h2>
+                <div class="small">
+                  Only relative values matter. A higher weight makes the
+                  optimizer prefer that stat.
+                </div>
+              </div>
+              <button type="button" class="secondary" id="resetWeights">Reset</button>
+            </div>
+            <div class="card-body">
+              <div class="weights" id="weights"></div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h2>Breakpoints</h2>
+                <div class="small">
+                  Add hard stat limits or change a stat's weight after a
+                  breakpoint. Two stats can have breakpoint rules.
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="caps"></div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h2>Baseline Stats</h2>
+                <div class="small">
+                  Enter stats not contained in the item rows (racials, buffs,
+                  set bonuses, gem bonuses, or other fixed sources). These count toward
+                  breakpoints but cannot be reforged.
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="baseline" id="baseline"></div>
+            </div>
+          </section>
+        </aside>
+        <section class="stack">
+          <div class="card" id="gearCard">
+            <div class="card-head">
+              <div>
+                <h2>Gear</h2>
+                <div class="small">
+                  Enter an item ID to fill its name and original secondary
+                  stats, or enter them manually.
+                </div>
+              </div>
+              <button type="button" class="secondary" id="openWowhead">
+                Import Wowhead Planner
+              </button>
+            </div>
+            <div class="gear-wrap">
+              <table class="item-editor-table gear" aria-label="Equipped gear">
+                <thead>
+                  <tr id="gearHead"></tr>
+                </thead>
+                <tbody id="gearBody"></tbody>
+              </table>
+            </div>
+            <div class="actions">
+              <span class="status" id="status" role="status" aria-live="polite" aria-atomic="true"
+                >Ready. Item database loaded.</span
+              ><button type="button" class="primary" id="calculate">
+                Optimize Reforging
+              </button>
+            </div>
+            <div class="results main-results" id="results">
+              <div class="card-head">
+                <h2>Recommended Reforges</h2>
+                <div class="toolbar">
+                  <button type="button" class="secondary" id="toggleResults" aria-controls="resultsBody" aria-expanded="true">
+                    Minimize ▴
+                  </button>
+                  <button type="button" class="secondary" id="copyResults">Copy Results</button>
+                </div>
+              </div>
+              <div class="card-body" id="resultsBody">
+                <div class="summary" id="summary"></div>
+                <div class="result-detail-grid">
+                  <section>
+                    <h3 class="section-title">Final Stats</h3>
+                    <div class="final-stats">
+                      <table aria-label="Final stats">
+                        <thead>
+                          <tr>
+                            <th scope="col">Stat</th>
+                            <th scope="col">Before</th>
+                            <th scope="col">Change</th>
+                            <th scope="col">Final</th>
+                          </tr>
+                        </thead>
+                        <tbody id="statDelta"></tbody>
+                      </table>
+                    </div>
+                  </section>
+                  <section>
+                    <h3 class="section-title">Per-Item Reforges</h3>
+                    <div class="result-table-wrap">
+                      <table class="result-table" aria-label="Per-item reforges">
+                        <thead>
+                          <tr>
+                            <th scope="col">Item</th>
+                            <th scope="col">Recommendation</th>
+                            <th scope="col">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody id="resultBody"></tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="card" id="comboLab">
+        <div class="card-head">
+          <div>
+            <h2>Combination Lab</h2>
+            <div class="small">
+              Treat the gear above as your base set, then test every valid
+              combination of the selected candidates allowed by the Combination
+              Rules, with reforging optimized for each combination.
+            </div>
+          </div>
+        </div>
+        <div class="candidate-rules">
+          <div class="candidate-rules-head">
+            <div>
+              <h3>Combination Rules</h3>
+              <div class="small">
+                Limit how many selected candidates may come from groups of
+                slots.
+              </div>
+            </div>
+            <button type="button" class="secondary" id="addComboRule">+ Add Rule</button>
+          </div>
+          <div id="comboRules"></div>
+        </div>
+        <div class="candidate-section-head">
+          <div>
+            <h3>Candidates</h3>
+            <div class="small">
+              Add the alternative items that may replace equipped gear during comparison.
+            </div>
+          </div>
+          <button type="button" class="secondary" id="addCandidate">
+            + Add Candidate
+          </button>
+        </div>
+        <div class="gear-wrap candidate-table-wrap">
+          <table class="item-editor-table candidate-table" aria-label="Candidate gear">
+            <thead>
+              <tr id="candidateHead"></tr>
+            </thead>
+            <tbody id="candidateBody"></tbody>
+          </table>
+        </div>
+        <div class="combo-controls">
+          <label
+            >Equip
+            <select id="comboMethod">
+              <option value="exactly">Exactly</option>
+              <option value="atleast">At least</option>
+              <option value="atmost">At most</option>
+            </select>
+            <input id="comboCount" type="number" min="1" value="1" />
+            candidate item(s)</label
+          ><span class="small" id="comboEstimate"
+            >Add candidates to begin.</span
+          ><span class="small" id="comboProgress" role="status" aria-live="polite" aria-atomic="true"></span
+          ><span
+            class="combo-spinner"
+            id="comboSpinner"
+            role="status"
+            aria-label="Calculating combinations"
+            hidden
+          ></span
+          ><button type="button" class="danger" id="stopCombos" disabled>Stop</button
+          ><button type="button" class="primary" id="runCombos">
+            Compare Combinations
+          </button>
+        </div>
+        <div id="comboResults" class="combo-results">
+          <div class="combo-summary" id="comboSummary"></div>
+          <div class="gear-wrap">
+            <table class="combo-table" aria-label="Optimized combination results">
+              <thead>
+                <tr>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="rank">
+                      # <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="candidates">
+                      Equipped Candidates
+                      <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="caps">
+                      Breakpoints <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Main stat">
+                      Main Stat <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Spirit">
+                      Spirit <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Dodge">
+                      Dodge <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Parry">
+                      Parry <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Hit">
+                      Hit <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Crit">
+                      Crit <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Haste">
+                      Haste <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Expertise">
+                      Expertise <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                  <th scope="col" aria-sort="none">
+                    <button type="button" class="combo-sort" data-sort="Mastery">
+                      Mastery <span class="sort-indicator"></span>
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="comboBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+    <footer class="site-footer" aria-label="Site information">
+      <div class="site-footer__title">ReforgePlanner</div>
+      <div>
+        © <span id="footerYear">2026</span>
+        <a href="https://github.com/ManneN1" target="_blank" rel="noopener noreferrer">ManneN</a>
+        · <a href="LICENSE">MIT License</a>
+      </div>
+      <div>
+        Special thanks to
+        <a href="https://github.com/d07RiV" target="_blank" rel="noopener noreferrer">d07RiV</a>
+        (ReforgeLite Engine) and
+        <a href="https://github.com/wowsims/cata" target="_blank" rel="noopener noreferrer">WoWSims</a>
+        (Cataclysm Item Database).
+      </div>
+    </footer>
+    <div class="modal" id="modal" role="dialog" hidden aria-modal="true" aria-labelledby="setupDialogTitle">
+      <div class="dialog">
+        <div class="card-head">
+          <div>
+            <h2 id="setupDialogTitle">Import JSON</h2>
+            <div class="small" id="setupDialogDescription">
+              Paste a Reforge Planner setup JSON export to restore the whole setup.
+            </div>
+          </div>
+          <button type="button" class="icon-btn" id="closeModal" aria-label="Close setup import and export dialog">×</button>
+        </div>
+        <div class="card-body">
+          <label class="visually-hidden" for="dataBox">Reforge Planner setup JSON</label>
+          <textarea
+            id="dataBox"
+            spellcheck="false"
+            placeholder="Paste exported Reforge Planner JSON…"
+          ></textarea>
+          <div class="dialog-actions">
+            <button type="button" class="secondary" id="copyData" hidden>Copy JSON</button
+            ><button type="button" class="primary" id="importData">Import JSON</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal" id="wowheadModal" role="dialog" hidden aria-modal="true" aria-labelledby="wowheadDialogTitle">
+      <div class="dialog">
+        <div class="card-head">
+          <div>
+            <h2 id="wowheadDialogTitle">Import Wowhead Gear Planner</h2>
+            <div class="small">
+              This reads Wowhead’s encoded link locally, extracts equipped item
+              IDs, variants, gems, and enchants, then replaces the current gear
+              rows. Existing reforges are ignored.
+            </div>
+          </div>
+          <button type="button" class="icon-btn" id="closeWowhead" aria-label="Close Wowhead import dialog">×</button>
+        </div>
+        <div class="card-body">
+          <label class="visually-hidden" for="wowheadLink">Wowhead Gear Planner URL</label>
+          <textarea
+            id="wowheadLink"
+            class="wowhead-input"
+            spellcheck="false"
+            placeholder="https://www.wowhead.com/cata/gear-planner/…"
+          ></textarea>
+          <div class="dialog-actions">
+            <button type="button" class="secondary" id="cancelWowhead">Cancel</button
+            ><button type="button" class="primary" id="importWowhead">Import Gear</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="item-db.js"></script>
+    <script src="wowhead-parser.js"></script>
+    <script src="js/model.js"></script>
+    <script src="js/items.js"></script>
+    <script src="js/optimizer.js"></script>
+    <script src="js/combinations.js"></script>
+    <script src="js/persistence.js"></script>
+    <script src="js/modal.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,599 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import vm from "node:vm";
+
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const html = readFileSync(resolve(projectRoot, "index.html"), "utf8");
+const script = readFileSync(resolve(projectRoot, "app.js"), "utf8");
+const styles = readFileSync(resolve(projectRoot, "styles.css"), "utf8");
+const moduleContext = { globalThis: null, setTimeout, structuredClone, Map };
+moduleContext.globalThis = moduleContext;
+for (const file of [
+  "model.js",
+  "items.js",
+  "optimizer.js",
+  "combinations.js",
+  "persistence.js",
+  "modal.js",
+])
+  vm.runInNewContext(
+    readFileSync(resolve(projectRoot, "js", file), "utf8"),
+    moduleContext,
+    { filename: file },
+  );
+const modules = moduleContext.ReforgePlanner;
+
+assert.ok(script, "The application script should be present");
+
+const STATS = [
+  "Spirit",
+  "Dodge",
+  "Parry",
+  "Hit",
+  "Crit",
+  "Haste",
+  "Expertise",
+  "Mastery",
+];
+const MAIN_STAT = "Main stat";
+const TOTAL_STATS = [MAIN_STAT, ...STATS];
+const MAX_GEMS = 3;
+const SLOTS = [
+  "Head",
+  "Neck",
+  "Shoulder",
+  "Back",
+  "Chest",
+  "Wrist",
+  "Hands",
+  "Waist",
+  "Legs",
+  "Feet",
+  "Finger 1",
+  "Finger 2",
+  "Trinket 1",
+  "Trinket 2",
+  "Main hand",
+  "Off hand",
+  "Ranged",
+];
+
+function createRuntime(state, itemDb = {}, gemDb = {}, enchantDb = {}) {
+  const databases = { itemDb, gemDb, enchantDb };
+  const combinationOptions = {
+    rules: state.comboRules || [],
+    baseItems: state.items || [],
+    itemDb,
+  };
+  return {
+    fixedSlotItems: modules.model.normalizeFixedItems,
+    countCandidateRange: (items, count, method) =>
+      modules.combinations.countCandidateRange(
+        items,
+        count,
+        method,
+        combinationOptions,
+      ),
+    iterateCandidateRange: (items, count, method) =>
+      modules.combinations.iterateCandidateRange(
+        items,
+        count,
+        method,
+        combinationOptions,
+      ),
+    optionsFor: (currentItem, caps) =>
+      modules.optimizer.optionsFor(currentItem, caps, state.weights),
+    capAllows: modules.optimizer.capAllows,
+    calculate: (items) => modules.optimizer.optimize(items, state, databases),
+    compareOptimizedResults: (left, right) =>
+      modules.optimizer.compareOptimizedResults(left, right, state.weights),
+    parseCsv: (text) =>
+      modules.persistence.parseGearCsv(text, {
+        fillLocal: modules.items.createItemRepository({ itemDb }).fillLocal,
+      }),
+  };
+}
+
+function emptyStats(overrides = {}) {
+  return Object.fromEntries(STATS.map((stat) => [stat, overrides[stat] || 0]));
+}
+
+function item(slot, stats = {}, extra = {}) {
+  return {
+    slot,
+    id: "",
+    name: `${slot} test item`,
+    mainStat: 0,
+    gemIds: [],
+    enchantIds: [],
+    twoHanded: false,
+    stats: emptyStats(stats),
+    ...extra,
+  };
+}
+
+function baseState(overrides = {}) {
+  return {
+    weights: Object.fromEntries(TOTAL_STATS.map((stat) => [stat, 0])),
+    baseline: Object.fromEntries(TOTAL_STATS.map((stat) => [stat, 0])),
+    caps: [
+      { stat: "None", rules: [{ method: "atleast", value: 0, after: 0 }] },
+      { stat: "None", rules: [{ method: "atleast", value: 0, after: 0 }] },
+    ],
+    items: [item("Main hand")],
+    candidates: [],
+    comboRules: [],
+    ...overrides,
+  };
+}
+
+test("reforge options convert exactly 40% and cannot target an existing stat", () => {
+  const state = baseState();
+  state.weights.Hit = 1;
+  const { optionsFor } = createRuntime(state);
+  const options = optionsFor(
+    item("Head", { Crit: 101, Mastery: 20 }),
+    state.caps,
+  );
+
+  assert.ok(
+    options.some(
+      (option) =>
+        option.src === "Crit" && option.dst === "Hit" && option.amount === 40,
+    ),
+  );
+  assert.ok(
+    !options.some(
+      (option) => option.src === "Crit" && option.dst === "Mastery",
+    ),
+  );
+});
+
+
+test("socket colors are metadata only and socket bonuses belong in baseline stats", () => {
+  const itemDb = {
+    100: { k: [2, 3], b: { m: 10, s: [0, 0, 0, 0, 0, 0, 0, 5] } },
+  };
+  const gemDb = {
+    1: { c: 5, m: 0, s: [0, 0, 0, 0, 10, 0, 0, 0] },
+    2: { c: 7, m: 0, s: [0, 0, 0, 0, 0, 10, 0, 0] },
+  };
+  const bonuses = modules.optimizer.equipmentBonuses(
+    item("Head", {}, {
+      id: "100",
+      gemIds: [1, 2],
+      socketColors: [2, 3],
+      gemBonus: { [MAIN_STAT]: 10, Mastery: 5 },
+    }),
+    { itemDb, gemDb, enchantDb: {} },
+  );
+  assert.equal(bonuses[MAIN_STAT], 0);
+  assert.equal(bonuses.Mastery, 0);
+  assert.equal(bonuses.Crit, 10);
+  assert.equal(bonuses.Haste, 10);
+});
+
+test("optimizer prioritizes meeting a configured breakpoint", async () => {
+  const state = baseState({
+    weights: { ...baseState().weights, Mastery: 2, Crit: 1 },
+    caps: [
+      { stat: "Hit", rules: [{ method: "atleast", value: 60, after: 0 }] },
+      { stat: "None", rules: [{ method: "atleast", value: 0, after: 0 }] },
+    ],
+  });
+  const { calculate } = createRuntime(state);
+  const result = await calculate(
+    [item("Head", { Crit: 100 }), item("Shoulder", { Crit: 50 })],
+    false,
+  );
+
+  assert.equal(result.totals.Hit, 60);
+  assert.equal(result.allCapsMet, true);
+});
+
+test("Main stat follows its configured priority in Lab ranking", () => {
+  const state = baseState();
+  const { compareOptimizedResults } = createRuntime(state);
+  const lowerMainHigherCrit = {
+    allCapsMet: true,
+    capResults: [],
+    totals: { ...state.baseline, [MAIN_STAT]: 100, Crit: 20 },
+  };
+  const higherMainLowerCrit = {
+    allCapsMet: true,
+    capResults: [],
+    totals: { ...state.baseline, [MAIN_STAT]: 500, Crit: 10 },
+  };
+
+  state.weights.Crit = 200;
+  state.weights[MAIN_STAT] = 100;
+  assert.ok(
+    compareOptimizedResults(higherMainLowerCrit, lowerMainHigherCrit) > 0,
+  );
+
+  state.weights[MAIN_STAT] = 300;
+  assert.ok(
+    compareOptimizedResults(higherMainLowerCrit, lowerMainHigherCrit) < 0,
+  );
+  assert.match(
+    script,
+    /const compareRecords = \(left, right\) =>\s*compareOptimizedResults\(left\.result, right\.result\)/,
+    "Rendered Lab results should use the canonical comparator",
+  );
+});
+
+test("combination count and generator agree for rings, rules, and weapons", () => {
+  const cases = [
+    {
+      name: "one ring has two placements",
+      state: baseState(),
+      candidates: [item("Finger")],
+      count: 1,
+      expected: 2n,
+    },
+    {
+      name: "2H plus off-hand is excluded",
+      state: baseState(),
+      candidates: [
+        item("Main hand", {}, { twoHanded: true }),
+        item("Off hand"),
+      ],
+      count: 2,
+      expected: 0n,
+    },
+    {
+      name: "1H candidate can replace a base 2H and permit an off-hand",
+      state: baseState({ items: [item("Main hand", {}, { twoHanded: true })] }),
+      candidates: [item("Main hand"), item("Off hand")],
+      count: 2,
+      expected: 1n,
+    },
+    {
+      name: "slot-group rule limits selected candidates",
+      state: baseState({
+        comboRules: [{ max: 1, slots: ["Head"] }],
+      }),
+      candidates: [item("Head"), item("Head"), item("Shoulder")],
+      count: 2,
+      expected: 2n,
+    },
+  ];
+
+  for (const current of cases) {
+    const runtime = createRuntime(current.state);
+    const counted = runtime.countCandidateRange(
+      current.candidates,
+      current.count,
+      "exactly",
+    );
+    const generated = BigInt(
+      [...runtime.iterateCandidateRange(current.candidates, current.count, "exactly")]
+        .length,
+    );
+    assert.equal(counted, current.expected, current.name);
+    assert.equal(generated, current.expected, current.name);
+  }
+});
+
+test("state and CSV normalization enforce gem and enchant limits", () => {
+  const state = baseState();
+  const { fixedSlotItems, parseCsv } = createRuntime(state);
+  const normalized = fixedSlotItems([
+    item("Head", {}, { gemIds: [1, 2, 3, 4], enchantIds: [10, 11] }),
+  ]).find((entry) => entry.slot === "Head");
+  assert.deepEqual(Array.from(normalized.gemIds), [1, 2, 3]);
+  assert.deepEqual(Array.from(normalized.enchantIds), [10]);
+
+  const [parsed] = parseCsv(
+    'Item,Gem IDs,Enchant IDs\n"Custom","1;2;3;4","10;11"',
+  );
+  assert.deepEqual(Array.from(parsed.gemIds), [1, 2, 3]);
+  assert.deepEqual(Array.from(parsed.enchantIds), [10]);
+});
+
+test("Wowhead parser decodes the current Cataclysm planner format", () => {
+  const require = createRequire(import.meta.url);
+  const parseWowheadGearPlanner = require(resolve(projectRoot, "wowhead-parser.js"));
+  const result = parseWowheadGearPlanner(
+    "ELBg1AAAAQJB4Gf84IiK4EfU4PPWAC4I-2FD4Gf_4EfM4PPbJF4Gf-4EfU4EfM4J3qJG4GiK4Ef24EfU4MWoBH4Gf94MgrFI4GiL4EfM4J3sBJ4GiP4PPoGK4Gf74Ef24J3v4FK3AL4GjSAM4GjTAN4G_kAO4GlgCP4GlL4KGK4FK6BQ4INb4PDPES4Guu4EfU",
+  );
+
+  assert.ok(result.items.length >= 15);
+  assert.ok(result.items.every((entry) => entry.itemId > 0 && entry.slotName));
+});
+
+test("displayed combination counts use spaces for thousands grouping", () => {
+  const { formatCount } = modules.model;
+  assert.equal(formatCount(1337), "1 337");
+  assert.equal(formatCount(1234567n), "1 234 567");
+});
+
+test("item repository keeps local and online lookup behind one interface", async () => {
+  const database = { "42": { n: "Local item", m: 12, s: [0, 0, 0, 3, 0, 0, 0, 4] } };
+  const repository = modules.items.createItemRepository({
+    itemDb: database,
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        name: "Online item",
+        tooltip: "<!--stat3-->+21<!--rtg32-->17",
+      }),
+    }),
+  });
+  const local = modules.model.blankItem("Head");
+  assert.equal(repository.fillLocal(local, 42), true);
+  assert.equal(local.name, "Local item");
+  assert.equal(local.stats.Hit, 3);
+
+  const online = modules.model.blankItem("Head");
+  assert.equal(await repository.fillWithFallback(online, 99, -12), "wowhead");
+  assert.equal(online.name, "Online item");
+  assert.equal(online.mainStat, 21);
+  assert.equal(online.stats.Crit, 17);
+  assert.equal(online.randomEnchantId, "-12");
+});
+
+test("setup and gear persistence round-trip through their public APIs", () => {
+  const state = baseState({ comboCount: 3, comboMethod: "atleast" }),
+    serialized = modules.persistence.serializeSetup(state),
+    restored = modules.persistence.parseSetup(serialized);
+  assert.equal(restored.format, "ReforgePlanner");
+  assert.equal(restored.comboCount, 3);
+  assert.equal(restored.comboMethod, "atleast");
+
+  const original = item("Head", { Crit: 17 }, {
+    id: "42",
+    name: 'Helm, "Test"',
+    gemIds: [1, 2, 3],
+    enchantIds: [10],
+  });
+  const csv = modules.persistence.serializeGearCsv([original]);
+  const [restoredItem] = modules.persistence.parseGearCsv(csv);
+  assert.equal(restoredItem.name, original.name);
+  assert.equal(restoredItem.stats.Crit, 17);
+  assert.deepEqual(Array.from(restoredItem.gemIds), [1, 2, 3]);
+  assert.deepEqual(Array.from(restoredItem.enchantIds), [10]);
+});
+
+test("static entry point owns final layout and loads extracted assets", () => {
+  assert.match(html, /<link rel="stylesheet" href="styles\.css" \/>/);
+  assert.match(html, /<script src="app\.js"><\/script>/);
+  assert.match(html, /<script src="js\/model\.js"><\/script>/);
+  assert.match(html, /<script src="js\/items\.js"><\/script>/);
+  assert.match(html, /<script src="js\/optimizer\.js"><\/script>/);
+  assert.match(html, /<script src="js\/combinations\.js"><\/script>/);
+  assert.match(html, /<script src="js\/persistence\.js"><\/script>/);
+  assert.match(html, /<script src="js\/modal\.js"><\/script>/);
+  assert.doesNotMatch(html, /<style>|style="|<script>\s*const STATS/);
+  assert.doesNotMatch(script, /pageGrid\.after|\$\("#gearCard"\)\.append/);
+  assert.doesNotMatch(script, /function\*?\s+iterateCandidateRange\s*\(/);
+  assert.doesNotMatch(script, /function\s+parseCsv\s*\(/);
+
+  const gearIndex = html.indexOf('id="gearCard"');
+  const resultsIndex = html.indexOf('id="results"');
+  const labIndex = html.indexOf('id="comboLab"');
+  assert.ok(gearIndex >= 0 && gearIndex < resultsIndex);
+  assert.ok(resultsIndex < labIndex);
+});
+
+test("shared styles remain valid and avoid specificity escapes", () => {
+  assert.match(styles, /--surface-input:/);
+  assert.match(styles, /--line-soft:/);
+  assert.match(styles, /\/\* Responsive overrides \*\//);
+  assert.doesNotMatch(styles, /!important/);
+  assert.doesNotMatch(styles, /\\n/);
+
+  const withoutComments = styles.replace(/\/\*[\s\S]*?\*\//g, "");
+  let depth = 0;
+  for (const character of withoutComments) {
+    if (character === "{") depth++;
+    if (character === "}") depth--;
+    assert.ok(depth >= 0, "CSS must not contain an unmatched closing brace");
+  }
+  assert.equal(depth, 0, "CSS blocks must be balanced");
+});
+
+test("Phase 7 semantics and accessibility contracts remain intact", () => {
+  assert.match(html, /<meta name="description" content="[^"]+" \/>/);
+  assert.match(
+    html,
+    /id="modal" role="dialog" hidden aria-modal="true" aria-labelledby="setupDialogTitle"/,
+  );
+  assert.match(
+    html,
+    /id="wowheadModal" role="dialog" hidden aria-modal="true" aria-labelledby="wowheadDialogTitle"/,
+  );
+  assert.match(html, /<label class="visually-hidden" for="dataBox">/);
+  assert.match(html, /<label class="visually-hidden" for="wowheadLink">/);
+  assert.match(html, /id="status" role="status" aria-live="polite" aria-atomic="true"/);
+  assert.match(html, /id="comboProgress" role="status" aria-live="polite" aria-atomic="true"/);
+  assert.match(html, /<th scope="col" aria-sort="none">/);
+  assert.match(html, /<tr id="gearHead"><\/tr>/);
+  assert.match(html, /<tr id="candidateHead"><\/tr>/);
+  assert.match(script, /const ITEM_EDITOR_COLUMNS = \[/);
+  assert.match(script, /function renderItemEditorHeader\(/);
+  assert.match(html, /id="toggleResults"[^>]+aria-expanded="true"/);
+  assert.match(script, /setAttribute\("aria-expanded", String\(!collapsed\)\)/);
+  assert.match(script, /button\.closest\("th"\)\.setAttribute\(/);
+  assert.match(script, /const originalRank = defaultRank\.get\(record\)/);
+  assert.match(script, /class="combo-main-row" tabindex="0" role="button"/);
+  assert.match(script, /aria-controls="\$\{detailId\}"/);
+  assert.match(script, /row\.onkeydown =/);
+  assert.doesNotMatch(script, /class="secondary combo-toggle"/);
+  assert.match(script, /ariaLabel: `Remove candidate \$\{index \+ 1\}`/);
+  assert.match(script, /type: "button",\n\s+title: "Remove Rule"/);
+
+  const modalScript = readFileSync(resolve(projectRoot, "js", "modal.js"), "utf8");
+  assert.match(modalScript, /event\.key === "Escape"/);
+  assert.match(modalScript, /element\.hidden = false/);
+  assert.match(modalScript, /element\.hidden = true/);
+  assert.match(modalScript, /returnFocus\?\.isConnected/);
+  assert.match(styles, /input:focus-visible/);
+  assert.match(styles, /textarea:focus-visible/);
+  assert.match(styles, /\.visually-hidden \{/);
+});
+
+test("Combination Lab keeps candidate actions and empty state in a labelled candidate section", () => {
+  const rulesIndex = html.indexOf('class="candidate-rules"');
+  const candidateHeadingIndex = html.indexOf('<h3>Candidates</h3>');
+  const addCandidateIndex = html.indexOf('id="addCandidate"');
+  const candidateTableIndex = html.indexOf('class="item-editor-table candidate-table"');
+  assert.ok(rulesIndex >= 0 && candidateHeadingIndex > rulesIndex);
+  assert.ok(addCandidateIndex > candidateHeadingIndex);
+  assert.ok(candidateTableIndex > addCandidateIndex);
+  assert.match(script, /className: "item-editor-empty"/);
+  assert.match(script, /No candidates added yet\. Use Add Candidate to create one\./);
+  assert.match(styles, /\.candidate-table-wrap \{[\s\S]*?min-height:\s*0;/);
+  assert.match(styles, /\.item-editor-empty td \{[\s\S]*?height:\s*72px;/);
+  assert.match(styles, /\.item-editor-table \{/);
+  assert.match(styles, /\.candidate-section-head \{/);
+  assert.match(styles, /\.item-editor-table th \{[\s\S]*?text-align:\s*center;/);
+});
+
+test("application orchestration is scope-contained and validates module startup", () => {
+  assert.match(script, /^\(\(\) => \{\n  "use strict";/);
+  assert.match(script, /const requiredNamespaces = \[/);
+  for (const namespace of [
+    "model",
+    "items",
+    "optimizer",
+    "combinations",
+    "persistence",
+    "modal",
+  ]) {
+    assert.match(script, new RegExp(`"${namespace}"`));
+  }
+  assert.match(script, /missingNamespaces\.join\(", "\)/);
+  assert.match(script, /\n\}\)\(\);\s*$/);
+});
+
+
+
+test("Combination Rules panel is visually distinct and slot menus are not clipped", () => {
+  const css = readFileSync(resolve(projectRoot, "styles.css"), "utf8");
+  assert.match(css, /#comboLab\s*\{[^}]*overflow:\s*visible/s);
+  assert.match(css, /\.candidate-rules\s*\{[^}]*padding:\s*16px 20px[^}]*border-bottom:\s*1px solid var\(--line\)/s);
+  assert.doesNotMatch(css, /\.candidate-rules\s*\{[^}]*background:/s);
+  assert.doesNotMatch(css, /\.candidate-rules\s*\{[^}]*border-radius:/s);
+  assert.match(css, /\.candidate-rules\s*\{[^}]*z-index:\s*3/s);
+  assert.match(css, /\.combo-controls\s*\{[^}]*z-index:\s*1/s);
+});
+
+test("Gear and Candidate editors share labels, cell builders, and centered alignment", () => {
+  assert.match(script, /const ITEM_EDITOR_COLUMNS = \[[\s\S]*?"Name"/);
+  assert.doesNotMatch(script, /const ITEM_EDITOR_COLUMNS = \[[\s\S]*?"Item",/);
+  assert.match(script, /function appendItemEditorCell\(/);
+  assert.match(script, /function createItemEditorNameInput\(/);
+  assert.match(script, /function createItemEditorStatInput\(/);
+  assert.ok((script.match(/createItemEditorNameInput\(/g) || []).length >= 3);
+  assert.ok((script.match(/createItemEditorStatInput\(/g) || []).length >= 5);
+  assert.match(styles, /\.item-editor-table td \{[\s\S]*?text-align:\s*center;[\s\S]*?vertical-align:\s*middle;/);
+  assert.match(styles, /\.item-editor-table input,[\s\S]*?\.item-editor-table select \{[\s\S]*?text-align:\s*center;[\s\S]*?text-align-last:\s*center;/);
+});
+
+
+test("stat weight labels render above their inputs", () => {
+  assert.match(styles, /\.weights label\s*\{[^}]*grid-template-rows:\s*auto auto/s);
+  assert.doesNotMatch(styles, /\.weights label\s*\{[^}]*grid-template-columns:/s);
+});
+
+test("gem and socket color enums match the database schema", () => {
+  assert.match(script, /const SOCKET_COLORS = Object\.freeze\(\[\s*\[1, "Meta"\],\s*\[2, "Red"\],\s*\[3, "Blue"\],\s*\[4, "Yellow"\],\s*\[5, "Green"\],\s*\[6, "Orange"\],\s*\[7, "Purple"\],\s*\[8, "Prismatic"\]/s);
+  const database = readFileSync(resolve(projectRoot, "item-db.js"), "utf8");
+  assert.match(database, /"52212":\{"n":"Delicate Inferno Ruby"[^}]*"c":2\}/);
+  assert.match(database, /"52235":\{"n":"Rigid Ocean Sapphire"[^}]*"c":3\}/);
+  assert.match(database, /"52219":\{"n":"Fractured Amberjewel"[^}]*"c":4\}/);
+  assert.match(database, /"52218":\{"n":"Forceful Dream Emerald"[^}]*"c":5\}/);
+  assert.match(database, /"52204":\{"n":"Adept Ember Topaz"[^}]*"c":6\}/);
+  assert.match(database, /"52213":\{"n":"Etched Demonseye"[^}]*"c":7\}/);
+});
+
+test("gem colors are read-only visual cues", () => {
+  assert.doesNotMatch(script, /createSocketColorControl|socket-color-select|Socket \$\{socket \+ 1\} color/);
+  assert.match(script, /function|const applyKnownSocketColor/);
+  assert.match(script, /appendGemOptions\(gem, item\.gemIds\?\.\[socket\]\)/);
+  assert.match(script, /applySelectedGemColor\(gem\)/);
+  assert.match(styles, /\.gear-socket select\.known-socket,[\s\S]*?border-color:\s*var\(--socket-border/);
+  assert.match(styles, /\.gem-color-red \{ color:/);
+  assert.match(styles, /\.socket-border-meta \{ --socket-border: #d6e1e8; \}/);
+  assert.match(styles, /\.gem-color-meta \{ color: #d6e1e8; \}/);
+  assert.doesNotMatch(styles, /\.gem-color-meta \{ color: #c9a8ff; \}/);
+  assert.doesNotMatch(styles, /\.gear-socket\.known-socket|\.candidate-socket\.known-socket/);
+  assert.match(styles, /input:focus-visible,[\s\S]*?outline:\s*none;[\s\S]*?box-shadow:\s*none;/);
+});
+
+
+test("footer credits distinguish the creator from acknowledgements", () => {
+  const html = readFileSync(resolve(projectRoot, "index.html"), "utf8");
+  const app = readFileSync(resolve(projectRoot, "app.js"), "utf8");
+
+  assert.match(html, /<footer class="site-footer"/);
+  assert.doesNotMatch(html, /Created by ManneN/);
+  assert.match(html, /github\.com\/ManneN1/);
+  assert.match(html, /ReforgeLite Engine/);
+  assert.match(html, /Cataclysm Item Database/);
+  assert.match(html, /Special thanks to/);
+  assert.match(html, /github\.com\/d07RiV/);
+  assert.match(html, /github\.com\/wowsims\/cata/);
+  assert.match(html, /href="LICENSE"/);
+  assert.match(app, /const startYear = 2026/);
+  assert.match(app, /footerYear\.textContent/);
+});
+
+test("current setup persistence chunks cookies and falls back to local storage", () => {
+  const jar = new Map();
+  const cookieDocument = {
+    get cookie() {
+      return [...jar.entries()].map(([key, value]) => `${key}=${value}`).join("; ");
+    },
+    set cookie(value) {
+      const [pair, ...attributes] = value.split(";").map((part) => part.trim());
+      const separator = pair.indexOf("=");
+      const key = pair.slice(0, separator);
+      const storedValue = pair.slice(separator + 1);
+      const maxAge = attributes.find((part) => part.startsWith("Max-Age="));
+      if (maxAge === "Max-Age=0") jar.delete(key);
+      else jar.set(key, storedValue);
+    },
+  };
+  const storageValues = new Map();
+  const storage = {
+    getItem: (key) => storageValues.get(key) || null,
+    setItem: (key, value) => storageValues.set(key, value),
+    removeItem: (key) => storageValues.delete(key),
+  };
+  const state = baseState({
+    candidates: Array.from({ length: 30 }, (_, index) =>
+      item("Head", { Hit: index }, { name: `Candidate ${index}` }),
+    ),
+  });
+
+  modules.persistence.saveCurrentSetup(state, {
+    documentRef: cookieDocument,
+    storage,
+  });
+  const saved = modules.persistence.loadCurrentSetup({
+    documentRef: cookieDocument,
+    storage,
+  });
+  assert.equal(modules.persistence.parseSetup(saved).candidates.length, 30);
+  assert.ok(Number(jar.get("reforgePlannerCurrent.count")) > 1);
+  assert.equal(storageValues.size, 0);
+
+  const blockedCookies = { get cookie() { return ""; }, set cookie(_) {} };
+  modules.persistence.saveCurrentSetup(state, {
+    documentRef: blockedCookies,
+    storage,
+  });
+  assert.ok(storageValues.get("reforgePlanner.currentSetup.v1"));
+  assert.equal(
+    modules.persistence.parseSetup(
+      modules.persistence.loadCurrentSetup({ documentRef: blockedCookies, storage }),
+    ).candidates.length,
+    30,
+  );
+});
