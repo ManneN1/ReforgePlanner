@@ -1,4 +1,13 @@
-# ReforgePlanner
+<h1>
+  <img
+    src="assets/reforge-mark.svg"
+    width="28"
+    height="28"
+    alt=""
+    style="vertical-align: middle;"
+  />
+  ReforgePlanner
+</h1>
 
 A reforging optimizer for World of Warcraft: Cataclysm.
 
