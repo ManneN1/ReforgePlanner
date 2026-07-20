@@ -23,7 +23,9 @@ ReforgePlanner finds the best reforges for your current gear and can compare all
 
 ## Running
 
-Clone the repository and open `index.html` in a browser, or serve the directory with any static web server.
+Clone/Download the repository and open `index.html` in a browser, or serve the directory with any static web server.
+
+ReforgePlanner is also hosted [**here**](https://mannen1.github.io/ReforgePlanner/).
 
 ## Credits
 
