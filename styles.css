@@ -1105,3 +1105,91 @@
   grid-template-columns: minmax(280px, 1fr);
   width: min(430px, calc(100vw - 72px));
 }
+
+/* Wowhead planner export and merge */
+.result-export-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.75rem 0;
+}
+.merge-dialog {
+  width: min(760px, calc(100vw - 2rem));
+}
+.merge-source-grid {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1rem;
+}
+.merge-source-grid > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6rem 6rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.merge-source-grid label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+@media (max-width: 640px) {
+  .merge-source-grid > div {
+    grid-template-columns: minmax(0, 1fr) 4.5rem 4.5rem;
+  }
+}
+
+/* Shared Gear/Candidate column sizing. */
+.item-editor-table th:nth-child(1),
+.item-editor-table td:nth-child(1) {
+  width: 76px;
+  min-width: 76px;
+}
+.item-editor-table td:nth-child(1) select {
+  width: 68px;
+  min-width: 68px;
+}
+.item-editor-table th:nth-child(3),
+.item-editor-table td:nth-child(3) {
+  min-width: 280px;
+}
+.item-editor-table td:nth-child(3) .item-name {
+  width: 272px;
+  min-width: 272px;
+}
+.item-editor-table th:nth-child(13),
+.item-editor-table td:nth-child(13) {
+  width: 92px;
+  min-width: 92px;
+}
+.item-editor-table td:nth-child(13) select {
+  width: 84px;
+  max-width: 84px;
+}
+.item-editor-table th:nth-child(14),
+.item-editor-table td:nth-child(14) {
+  width: 1%;
+  white-space: nowrap;
+}
+.item-editor-table td:nth-child(14) {
+  padding-left: 2px;
+  padding-right: 2px;
+}
+.item-editor-table td:nth-child(14) .candidate-socket,
+.item-editor-table td:nth-child(14) .gear-socket {
+  margin-right: 2px;
+}
+
+.result-export-actions {
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.generated-wowhead-link {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.generated-wowhead-link a {
+  color: var(--accent);
+}

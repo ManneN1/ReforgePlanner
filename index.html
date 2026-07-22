@@ -84,9 +84,10 @@
                   stats, or enter them manually.
                 </div>
               </div>
-              <button type="button" class="secondary" id="openWowhead">
-                Import Wowhead Planner
-              </button>
+              <div class="toolbar">
+                <button type="button" class="secondary" id="mergeWowhead">Merge Wowhead Planners</button>
+                <button type="button" class="secondary" id="openWowhead">Import Wowhead Planner</button>
+              </div>
             </div>
             <div class="gear-wrap">
               <table class="item-editor-table gear" aria-label="Equipped gear">
@@ -110,11 +111,13 @@
                   <button type="button" class="secondary" id="toggleResults" aria-controls="resultsBody" aria-expanded="true">
                     Minimize ▴
                   </button>
+                  <button type="button" class="secondary" id="openBaseWowhead">Generate WowHead Gear Planner Link</button>
                   <button type="button" class="secondary" id="copyResults">Copy Results</button>
                 </div>
               </div>
               <div class="card-body" id="resultsBody">
                 <div class="summary" id="summary"></div>
+                <div class="generated-wowhead-link" id="baseWowheadLink" hidden></div>
                 <div class="result-detail-grid">
                   <section>
                     <h3 class="section-title">Final Stats</h3>
@@ -308,6 +311,10 @@
         · <a href="LICENSE">MIT License</a>
       </div>
       <div>
+        Provide feedback and report issues at the
+        <a href="https://github.com/ManneN1/ReforgePlanner" target="_blank" rel="noopener noreferrer">ReforgePlanner GitHub</a>.
+      </div>
+      <div>
         Special thanks to
         <a href="https://github.com/d07RiV" target="_blank" rel="noopener noreferrer">d07RiV</a>
         (ReforgeLite Engine) and
@@ -364,6 +371,36 @@
           <div class="dialog-actions">
             <button type="button" class="secondary" id="cancelWowhead">Cancel</button
             ><button type="button" class="primary" id="importWowhead">Import Gear</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="mergeWowheadModal" role="dialog" hidden aria-modal="true" aria-labelledby="mergeWowheadTitle">
+      <div class="dialog merge-dialog">
+        <div class="card-head">
+          <div>
+            <h2 id="mergeWowheadTitle">Merge Wowhead Gear Planners</h2>
+            <div class="small">Items and variants come from Planner A. Choose which planner supplies talents and glyphs, reforges, gems, and enchants.</div>
+          </div>
+          <button type="button" class="icon-btn" id="closeMergeWowhead" aria-label="Close Wowhead planner merge dialog">×</button>
+        </div>
+        <div class="card-body">
+          <label for="mergeWowheadA">Planner A</label>
+          <textarea id="mergeWowheadA" class="wowhead-input" spellcheck="false" placeholder="https://www.wowhead.com/cata/gear-planner/…"></textarea>
+          <label for="mergeWowheadB">Planner B</label>
+          <textarea id="mergeWowheadB" class="wowhead-input" spellcheck="false" placeholder="https://www.wowhead.com/cata/gear-planner/…"></textarea>
+          <div class="merge-source-grid" aria-label="Planner source choices">
+            <div><strong>Category</strong><strong>Planner A</strong><strong>Planner B</strong></div>
+            <div><span>Talents, glyphs, and class</span><label><input type="radio" name="merge-talents" value="left" checked> A</label><label><input type="radio" name="merge-talents" value="right"> B</label></div>
+            <div><span>Reforges</span><label><input type="radio" name="merge-reforges" value="left" checked> A</label><label><input type="radio" name="merge-reforges" value="right"> B</label></div>
+            <div><span>Gems</span><label><input type="radio" name="merge-gems" value="left" checked> A</label><label><input type="radio" name="merge-gems" value="right"> B</label></div>
+            <div><span>Enchants</span><label><input type="radio" name="merge-enchants" value="left" checked> A</label><label><input type="radio" name="merge-enchants" value="right"> B</label></div>
+          </div>
+          <div class="generated-wowhead-link" id="mergedWowheadLink" hidden></div>
+          <div class="dialog-actions">
+            <button type="button" class="secondary" id="cancelMergeWowhead">Cancel</button>
+            <button type="button" class="primary" id="createMergedWowhead">Generate Merged Planner Link</button>
           </div>
         </div>
       </div>

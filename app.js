@@ -234,6 +234,66 @@
             })[c],
         );
       }
+
+      function wowheadProfileBase() {
+        const profile = state.wowheadProfile || {};
+        return {
+          version: 4,
+          classSlug: profile.classSlug || "warrior",
+          raceSlug: profile.raceSlug || "human",
+          dataEnv: profile.dataEnv ?? 0,
+          gender: profile.gender ?? 0,
+          level: profile.level || 85,
+          talentTrees: structuredClone(profile.talentTrees || [
+            { talentCount: 0, chunks: [] },
+            { talentCount: 0, chunks: [] },
+            { talentCount: 0, chunks: [] },
+          ]),
+          glyphHash: profile.glyphHash || "",
+        };
+      }
+      function wowheadProfileForGear(gear, result) {
+        const reforgeBySlot = new Map();
+        (result?.items || []).forEach((item, index) => {
+          const choice = result.picked?.[index];
+          if (choice?.src && choice?.dst)
+            reforgeBySlot.set(item.slot, parseWowheadGearPlanner.reforgeId(choice.src, choice.dst));
+        });
+        return {
+          ...wowheadProfileBase(),
+          items: (gear || [])
+            .filter((item) => item.id && parseWowheadGearPlanner.slotId(item.slot))
+            .map((item) => ({
+              slotId: parseWowheadGearPlanner.slotId(item.slot),
+              slotName: item.slot,
+              itemId: Number(item.id),
+              randomEnchantId:
+                item.randomEnchantId === "" || item.randomEnchantId == null
+                  ? undefined
+                  : Number(item.randomEnchantId),
+              reforgeId: reforgeBySlot.get(item.slot) || undefined,
+              gemIds: (item.gemIds || []).filter(Boolean).map(Number),
+              enchantIds: (item.enchantIds || []).filter(Boolean).map(Number),
+            })),
+        };
+      }
+      function wowheadProfileUrl(gear, result) {
+        return encodeWowheadGearPlanner(wowheadProfileForGear(gear, result));
+      }
+      function renderGeneratedWowheadLink(target, url) {
+        target.innerHTML = "";
+        const link = el("a", {
+          href: url,
+          target: "_blank",
+          rel: "noopener noreferrer",
+        }, "Open generated Wowhead Gear Planner link");
+        target.append(link);
+        target.hidden = false;
+      }
+      function itemSlotLabel(slot, twoHanded = false) {
+        if (slot !== "Main hand") return slot;
+        return twoHanded ? "2H" : "1H";
+      }
       function renderWeights() {
         const box = $("#weights");
         box.innerHTML = "";
@@ -465,7 +525,7 @@
                   value: "one",
                   selected: !item.twoHanded && !knownTwoHanded,
                 },
-                "Main Hand",
+                "1H",
               ),
               el(
                 "option",
@@ -473,7 +533,7 @@
                   value: "two",
                   selected: Boolean(item.twoHanded || knownTwoHanded),
                 },
-                "Main Hand (2H)",
+                "2H",
               ),
             );
             weaponType.onchange = () => {
@@ -575,7 +635,7 @@
             el(
               "option",
               { value: "", selected: !item.randomEnchantId },
-              variants.length ? "Base Item" : "Not Applicable",
+              variants.length ? "Base Item" : "N/A",
             ),
           );
           variants.forEach((v) =>
@@ -769,7 +829,7 @@
                     selected:
                       s === item.slot && !(s === "Main hand" && isTwoHanded),
                   },
-                  s,
+                  itemSlotLabel(s, false),
                 ),
               ),
           );
@@ -780,7 +840,7 @@
                 value: "Main hand (2H)",
                 selected: item.slot === "Main hand" && isTwoHanded,
               },
-              "Main hand (2H)",
+              "2H",
             ),
           );
           slot.onchange = () => {
@@ -865,7 +925,7 @@
             el(
               "option",
               { value: "", selected: !item.randomEnchantId },
-              variants.length ? "Base Item" : "Not Applicable",
+              variants.length ? "Base Item" : "N/A",
             ),
           );
           variants.forEach((v) =>
@@ -1532,6 +1592,7 @@
           comboRules: x.comboRules || [],
           comboCount: Math.max(0, Math.floor(n(x.comboCount ?? 1))),
           comboMethod: x.comboMethod || "exactly",
+          wowheadProfile: x.wowheadProfile || null,
         };
         enforceWeaponRules();
         renderWeights();
@@ -1617,7 +1678,7 @@
               : "Base set (no candidates)";
             const originalRank = defaultRank.get(record),
               detailId = `combo-detail-${originalRank}`;
-            return `<tr class="combo-main-row" tabindex="0" role="button" aria-expanded="false" aria-controls="${detailId}" aria-label="Toggle details for original result ${originalRank}" data-detail-id="${detailId}"><td>${originalRank}</td><td>${equippedCandidates}</td><td class="${result.allCapsMet ? "cap-ok" : "cap-bad"}">${esc(capSummary(result.capResults))}</td>${TOTAL_STATS.map((stat) => `<td>${result.totals[stat]}</td>`).join("")}</tr><tr class="combo-detail-row" id="${detailId}" hidden><td colspan="${TOTAL_STATS.length + 3}"><div class="summary">${resultSummaryHtml(result)}</div><div class="result-detail-grid"><section><h3 class="section-title">Final Stats</h3><div class="final-stats"><table aria-label="Final stats for original result ${originalRank}"><thead><tr><th scope="col">Stat</th><th scope="col">Before</th><th scope="col">Change</th><th scope="col">Final</th></tr></thead><tbody>${statRows}</tbody></table></div></section><section><h3 class="section-title">Per-Item Reforges</h3><div class="result-table-wrap"><table class="result-table" aria-label="Per-item reforges for original result ${originalRank}"><thead><tr><th scope="col">Item</th><th scope="col">Recommendation</th><th scope="col">Amount</th></tr></thead><tbody>${reforgeRows}</tbody></table></div></section></div></td></tr>`;
+            return `<tr class="combo-main-row" tabindex="0" role="button" aria-expanded="false" aria-controls="${detailId}" aria-label="Toggle details for original result ${originalRank}" data-detail-id="${detailId}"><td>${originalRank}</td><td>${equippedCandidates}</td><td class="${result.allCapsMet ? "cap-ok" : "cap-bad"}">${esc(capSummary(result.capResults))}</td>${TOTAL_STATS.map((stat) => `<td>${result.totals[stat]}</td>`).join("")}</tr><tr class="combo-detail-row" id="${detailId}" hidden><td colspan="${TOTAL_STATS.length + 3}"><div class="summary">${resultSummaryHtml(result)}</div><div class="result-export-actions"><button type="button" class="secondary combo-wowhead-export" data-record-index="${index}">Generate WowHead Gear Planner Link</button><div class="generated-wowhead-link" data-wowhead-link-index="${index}" hidden></div></div><div class="result-detail-grid"><section><h3 class="section-title">Final Stats</h3><div class="final-stats"><table aria-label="Final stats for original result ${originalRank}"><thead><tr><th scope="col">Stat</th><th scope="col">Before</th><th scope="col">Change</th><th scope="col">Final</th></tr></thead><tbody>${statRows}</tbody></table></div></section><section><h3 class="section-title">Per-Item Reforges</h3><div class="result-table-wrap"><table class="result-table" aria-label="Per-item reforges for original result ${originalRank}"><thead><tr><th scope="col">Item</th><th scope="col">Recommendation</th><th scope="col">Amount</th></tr></thead><tbody>${reforgeRows}</tbody></table></div></section></div></td></tr>`;
           })
           .join("");
         document.querySelectorAll(".combo-sort").forEach((button) => {
@@ -1659,6 +1720,18 @@
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
             toggleDetails();
+          };
+        });
+        document.querySelectorAll(".combo-wowhead-export").forEach((button) => {
+          button.onclick = (event) => {
+            event.stopPropagation();
+            const record = comboRunResults[Number(button.dataset.recordIndex)];
+            if (!record) return;
+            const gear = comboGearVariants(record.combo, state.items, ITEM_DB)[0];
+            if (gear) {
+              const target = document.querySelector(`[data-wowhead-link-index="${button.dataset.recordIndex}"]`);
+              if (target) renderGeneratedWowheadLink(target, wowheadProfileUrl(gear, record.result));
+            }
           };
         });
       }
@@ -1886,6 +1959,16 @@
             }),
           );
           state.items = items;
+          state.wowheadProfile = {
+            version: parsed.version,
+            classSlug: parsed.classSlug,
+            raceSlug: parsed.raceSlug,
+            dataEnv: parsed.dataEnv,
+            gender: parsed.gender,
+            level: parsed.level,
+            talentTrees: parsed.talentTrees,
+            glyphHash: parsed.glyphHash,
+          };
           enforceWeaponRules();
           renderGear();
           scheduleCurrentSetupSave();
@@ -1905,6 +1988,37 @@
         } finally {
           button.disabled = false;
         }
+      };
+
+      const mergeWowheadDialog = ReforgePlanner.modal.createModalController($("#mergeWowheadModal"));
+      $("#mergeWowhead").onclick = () => mergeWowheadDialog.open($("#mergeWowheadA"));
+      $("#closeMergeWowhead").onclick = mergeWowheadDialog.close;
+      $("#cancelMergeWowhead").onclick = mergeWowheadDialog.close;
+      $("#createMergedWowhead").onclick = () => {
+        try {
+          const left = parseWowheadGearPlanner($("#mergeWowheadA").value.trim());
+          const right = parseWowheadGearPlanner($("#mergeWowheadB").value.trim());
+          const selected = (name) => document.querySelector(`input[name="merge-${name}"]:checked`)?.value || "left";
+          const merged = mergeWowheadGearPlanners(left, right, {
+            talents: selected("talents"),
+            reforges: selected("reforges"),
+            gems: selected("gems"),
+            enchants: selected("enchants"),
+          });
+          renderGeneratedWowheadLink(
+            $("#mergedWowheadLink"),
+            encodeWowheadGearPlanner(merged),
+          );
+        } catch (error) {
+          alert(`Wowhead merge failed: ${error.message}`);
+        }
+      };
+      $("#openBaseWowhead").onclick = () => {
+        if (!lastResult) return;
+        renderGeneratedWowheadLink(
+          $("#baseWowheadLink"),
+          wowheadProfileUrl(state.items, lastResult),
+        );
       };
       $("#copyResults").onclick = () => {
         if (!lastResult) return;

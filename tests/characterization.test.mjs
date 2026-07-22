@@ -774,3 +774,47 @@ test("mutual exclusion rules support candidate sets as an entity", () => {
     { rules: state.comboRules, baseItems: state.items, itemDb: {} },
   ), BigInt(combos.length));
 });
+
+test("Wowhead planner encoding round-trips talents, glyphs, reforges, gems, and enchants", () => {
+  const require = createRequire(import.meta.url);
+  const parse = require(resolve(projectRoot, "wowhead-parser.js"));
+  const url = "https://www.wowhead.com/cata/gear-planner/warrior/human/ELBg1U7Ix47B_q4Q5pDCH7HvqgO001s0011xtw21s0j31xv142pxb51s0g61rqg71rqf822j4QNB4GO_4IiL4IgU4GQ24PPXgAC4KEmh_gBD4FMDh_4PPagBF4FMGiG4J3qgFG4KFTh44EfO4FLIBH4FME4MgrgBI4KFQhp4J2tgFJ4KFUhr4Eew4PPlgFK4FMAh44Eew4J3ugAL4u9qhygAM4u9qhygAN4Ff5h_gAO4FhPhpgBP4u9niG4KGKgBQ4Ff2iI4J3mgAS4Ffdhr";
+  const parsed = parse(url);
+  const encoded = parse.encode(parsed);
+  assert.equal(encoded, url);
+  assert.ok(parsed.items.some((item) => item.reforgeId));
+  assert.ok(parsed.items.some((item) => item.gemIds.length));
+  assert.ok(parsed.items.some((item) => item.enchantIds.length));
+});
+
+test("Wowhead planner merge can select independent augmentation sources", () => {
+  const require = createRequire(import.meta.url);
+  const parse = require(resolve(projectRoot, "wowhead-parser.js"));
+  const left = {
+    version: 4, classSlug: "warrior", raceSlug: "human", level: 85,
+    talentTrees: [{ talentCount: 0, chunks: [] }, { talentCount: 0, chunks: [] }, { talentCount: 0, chunks: [] }],
+    glyphHash: "A", items: [{ slotId: 1, itemId: 100, reforgeId: 113, gemIds: [1], enchantIds: [2] }],
+  };
+  const right = {
+    ...left, classSlug: "death-knight", raceSlug: "orc", glyphHash: "B",
+    items: [{ slotId: 1, itemId: 200, reforgeId: 168, gemIds: [3], enchantIds: [4] }],
+  };
+  const merged = parse.merge(left, right, { talents: "right", reforges: "right", gems: "left", enchants: "right" });
+  assert.equal(merged.classSlug, "death-knight");
+  assert.equal(merged.items[0].itemId, 100);
+  assert.equal(merged.items[0].reforgeId, 168);
+  assert.deepEqual(merged.items[0].gemIds, [1]);
+  assert.deepEqual(merged.items[0].enchantIds, [4]);
+});
+
+
+test("item editor columns and generated WowHead links stay compact and inline", () => {
+  assert.match(script, /itemSlotLabel\(slot, twoHanded = false\)/);
+  assert.match(script, /return twoHanded \? "2H" : "1H"/);
+  assert.match(script, /variants\.length \? "Base Item" : "N\/A"/);
+  assert.doesNotMatch(script, /function openWowheadProfile/);
+  assert.match(script, /renderGeneratedWowheadLink/);
+  assert.match(html, /Generate WowHead Gear Planner Link/);
+  assert.match(html, /ReforgePlanner GitHub/);
+  assert.match(styles, /item-editor-table td:nth-child\(3\)[\s\S]*min-width: 280px/);
+});
