@@ -1125,6 +1125,10 @@
 .merge-dialog {
   width: min(760px, calc(100vw - 2rem));
 }
+.merge-url-input {
+  width: 100%;
+  min-width: 0;
+}
 .merge-source-grid {
   display: grid;
   gap: 0.35rem;

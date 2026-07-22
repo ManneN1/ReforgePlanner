@@ -882,3 +882,11 @@ test("import and export feedback is shown beside the header actions", () => {
   assert.match(script, /setSetupStatus\(`\$\{setupFormatName\(\)\} copied\.`/);
   assert.doesNotMatch(script, /\$\("#status"\)\.textContent = `\$\{setupFormatName\(\)\} import complete\.`/);
 });
+
+
+test("Wowhead merge planner URLs use compact single-line inputs", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /<input id="mergeWowheadA"[^>]*type="url"/);
+  assert.match(html, /<input id="mergeWowheadB"[^>]*type="url"/);
+  assert.doesNotMatch(html, /<textarea id="mergeWowhead[AB]"/);
+});
