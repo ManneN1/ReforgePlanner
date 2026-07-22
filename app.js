@@ -101,6 +101,8 @@
       const {
         serializeSetup,
         parseSetup,
+        serializeCompactSetup,
+        parseCompactSetup,
         serializeGearCsv,
         parseGearCsv,
         saveCurrentSetup,
@@ -1871,38 +1873,91 @@
         setupDialog = ReforgePlanner.modal.createModalController(modal),
         setupDialogTitle = $("#setupDialogTitle"),
         setupDialogDescription = $("#setupDialogDescription"),
+        setupFormat = $("#setupFormat"),
         dataBox = $("#dataBox"),
+        dataBoxLabel = $("#dataBoxLabel"),
         copyDataButton = $("#copyData"),
         importDataButton = $("#importData");
-      $("#openImport").onclick = () => {
-        setupDialogTitle.textContent = "Import JSON";
+      let setupDialogMode = "import";
+
+      const setupFormatName = () =>
+        setupFormat.value === "compact" ? "compact string" : "JSON";
+
+      const updateSetupDialogText = () => {
+        const formatName = setupFormatName();
+        dataBoxLabel.textContent = `Reforge Planner setup ${formatName}`;
+        dataBox.placeholder =
+          setupFormat.value === "compact"
+            ? "Paste a Reforge Planner compact string…"
+            : "Paste exported Reforge Planner JSON…";
+        if (setupDialogMode === "import") {
+          setupDialogDescription.textContent =
+            `Paste a Reforge Planner ${formatName} export to restore the whole setup.`;
+          return;
+        }
         setupDialogDescription.textContent =
-          "Paste a Reforge Planner setup JSON export to restore the whole setup.";
+          `Copy this ${formatName} to save or transfer the complete Reforge Planner setup.`;
+      };
+
+      const renderSetupExport = async () => {
+        updateSetupDialogText();
+        dataBox.value = "Generating…";
+        copyDataButton.disabled = true;
+        try {
+          dataBox.value =
+            setupFormat.value === "compact"
+              ? await serializeCompactSetup(state)
+              : serialize();
+          dataBox.select();
+        } catch (error) {
+          dataBox.value = "";
+          alert("Export failed: " + error.message);
+        } finally {
+          copyDataButton.disabled = false;
+        }
+      };
+
+      $("#openImport").onclick = () => {
+        setupDialogMode = "import";
+        setupDialogTitle.textContent = "Import";
         dataBox.value = "";
         dataBox.readOnly = false;
         copyDataButton.hidden = true;
         importDataButton.hidden = false;
+        updateSetupDialogText();
         setupDialog.open(dataBox);
       };
-      $("#exportJson").onclick = () => {
-        setupDialogTitle.textContent = "Export JSON";
-        setupDialogDescription.textContent =
-          "Copy this JSON to save or transfer the complete Reforge Planner setup.";
-        dataBox.value = serialize();
+      $("#exportJson").onclick = async () => {
+        setupDialogMode = "export";
+        setupDialogTitle.textContent = "Export";
         dataBox.readOnly = true;
         copyDataButton.hidden = false;
         importDataButton.hidden = true;
-        setupDialog.open(dataBox);
-        dataBox.select();
+        setupDialog.open(setupFormat);
+        await renderSetupExport();
+      };
+      setupFormat.onchange = () => {
+        if (setupDialogMode === "export") renderSetupExport();
+        else updateSetupDialogText();
       };
       $("#closeModal").onclick = setupDialog.close;
-      copyDataButton.onclick = () =>
-        navigator.clipboard.writeText(dataBox.value);
-      importDataButton.onclick = () => {
+      copyDataButton.onclick = async () => {
         try {
-          restoreSetupJson(dataBox.value.trim());
+          await navigator.clipboard.writeText(dataBox.value);
+        } catch (error) {
+          alert("Copy failed: " + error.message);
+        }
+      };
+      importDataButton.onclick = async () => {
+        try {
+          const input = dataBox.value.trim();
+          const setup =
+            setupFormat.value === "compact"
+              ? await parseCompactSetup(input)
+              : parseSetup(input);
+          restoreSetupJson(setup);
           setupDialog.close();
-          $("#status").textContent = "JSON import complete.";
+          $("#status").textContent = `${setupFormatName()} import complete.`;
           $("#status").className = "status good";
         } catch (e) {
           alert("Import failed: " + e.message);

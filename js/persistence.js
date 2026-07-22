@@ -90,6 +90,61 @@
     return storage?.getItem(CURRENT_SETUP_STORAGE_KEY) || null;
   }
 
+
+  const COMPACT_SETUP_PREFIX = "RFP1:";
+
+  function bytesToBase64Url(bytes) {
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize)
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    return btoa(binary)
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/u, "");
+  }
+
+  function base64UrlToBytes(value) {
+    const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    const binary = atob(padded);
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  }
+
+  async function serializeCompactSetup(state) {
+    if (typeof CompressionStream !== "function")
+      throw new Error("Compact exports are not supported by this browser.");
+    const payload = JSON.stringify({ format: "ReforgePlanner", version: 1, ...state });
+    const compressed = new Blob([new TextEncoder().encode(payload)])
+      .stream()
+      .pipeThrough(new CompressionStream("gzip"));
+    const bytes = new Uint8Array(await new Response(compressed).arrayBuffer());
+    return COMPACT_SETUP_PREFIX + bytesToBase64Url(bytes);
+  }
+
+  async function parseCompactSetup(input) {
+    const value = String(input || "").trim();
+    if (!value.startsWith(COMPACT_SETUP_PREFIX))
+      throw new Error("This is not a Reforge Planner compact export.");
+    if (typeof DecompressionStream !== "function")
+      throw new Error("Compact imports are not supported by this browser.");
+    try {
+      const compressed = new Blob([
+        base64UrlToBytes(value.slice(COMPACT_SETUP_PREFIX.length)),
+      ])
+        .stream()
+        .pipeThrough(new DecompressionStream("gzip"));
+      const text = new TextDecoder().decode(
+        await new Response(compressed).arrayBuffer(),
+      );
+      return parseSetup(text);
+    } catch (error) {
+      throw new Error("The compact Reforge Planner export is invalid or damaged.", {
+        cause: error,
+      });
+    }
+  }
+
   function serializeSetup(state) {
     return JSON.stringify(
       { format: "ReforgePlanner", version: 1, ...state },
@@ -205,6 +260,8 @@
   root.ReforgePlanner.persistence = Object.freeze({
     serializeSetup,
     parseSetup,
+    serializeCompactSetup,
+    parseCompactSetup,
     serializeGearCsv,
     parseGearCsv,
     saveCurrentSetup,

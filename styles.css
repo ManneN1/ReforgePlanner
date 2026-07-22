@@ -1193,3 +1193,15 @@
 .generated-wowhead-link a {
   color: var(--accent);
 }
+
+.setup-format {
+  display: grid;
+  gap: 6px;
+  max-width: 220px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.setup-format select {
+  width: 100%;
+}

@@ -10,7 +10,20 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(resolve(projectRoot, "index.html"), "utf8");
 const script = readFileSync(resolve(projectRoot, "app.js"), "utf8");
 const styles = readFileSync(resolve(projectRoot, "styles.css"), "utf8");
-const moduleContext = { globalThis: null, setTimeout, structuredClone, Map };
+const moduleContext = {
+  globalThis: null,
+  setTimeout,
+  structuredClone,
+  Map,
+  CompressionStream,
+  DecompressionStream,
+  TextEncoder,
+  TextDecoder,
+  Blob,
+  Response,
+  btoa,
+  atob,
+};
 moduleContext.globalThis = moduleContext;
 for (const file of [
   "model.js",
@@ -533,7 +546,7 @@ test("Phase 7 semantics and accessibility contracts remain intact", () => {
     html,
     /id="wowheadModal" role="dialog" hidden aria-modal="true" aria-labelledby="wowheadDialogTitle"/,
   );
-  assert.match(html, /<label class="visually-hidden" for="dataBox">/);
+  assert.match(html, /<label class="visually-hidden"(?: id="dataBoxLabel")? for="dataBox">/);
   assert.match(html, /<label class="visually-hidden" for="wowheadLink">/);
   assert.match(html, /id="status" role="status" aria-live="polite" aria-atomic="true"/);
   assert.match(html, /id="comboProgress" role="status" aria-live="polite" aria-atomic="true"/);
@@ -817,4 +830,40 @@ test("item editor columns and generated WowHead links stay compact and inline", 
   assert.match(html, /Generate WowHead Gear Planner Link/);
   assert.match(html, /ReforgePlanner GitHub/);
   assert.match(styles, /item-editor-table td:nth-child\(3\)[\s\S]*min-width: 280px/);
+});
+
+test("compact setup exports round-trip and are smaller than formatted JSON", async () => {
+  const setup = baseState({
+    items: Array.from({ length: 17 }, (_, index) =>
+      item(SLOTS[index], { Crit: 100 + index, Mastery: 80 + index }, {
+        id: String(60000 + index),
+        name: `Repeated equipment item ${index + 1}`,
+        gemIds: [52207, 52207, 52207],
+        enchantIds: [4091],
+      }),
+    ),
+    candidates: Array.from({ length: 12 }, (_, index) =>
+      item("Head", { Hit: 90 + index, Haste: 70 + index }, {
+        id: String(70000 + index),
+        name: `Candidate item ${index + 1}`,
+      }),
+    ),
+  });
+  const json = modules.persistence.serializeSetup(setup);
+  const compact = await modules.persistence.serializeCompactSetup(setup);
+  const restored = await modules.persistence.parseCompactSetup(compact);
+
+  assert.ok(compact.startsWith("RFP1:"));
+  assert.ok(compact.length < json.length / 2);
+  assert.equal(restored.format, "ReforgePlanner");
+  assert.equal(restored.items[0].name, setup.items[0].name);
+  assert.equal(restored.candidates.length, setup.candidates.length);
+});
+
+test("setup dialogs expose JSON and compact formats", () => {
+  assert.match(html, /id="setupFormat"/);
+  assert.match(html, /value="json">JSON</);
+  assert.match(html, /value="compact">Compact string</);
+  assert.match(html, /id="openImport">\s*Import\s*</);
+  assert.match(html, /id="exportJson">\s*Export\s*</);
 });

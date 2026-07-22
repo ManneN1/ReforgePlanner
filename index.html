@@ -20,10 +20,10 @@
         </div>
         <div class="hero-actions">
           <button type="button" class="secondary" id="openImport">
-            Import JSON
+            Import
           </button>
           <button type="button" class="secondary" id="exportJson">
-            Export JSON
+            Export
           </button>
         </div>
       </header>
@@ -326,23 +326,30 @@
       <div class="dialog">
         <div class="card-head">
           <div>
-            <h2 id="setupDialogTitle">Import JSON</h2>
+            <h2 id="setupDialogTitle">Import</h2>
             <div class="small" id="setupDialogDescription">
-              Paste a Reforge Planner setup JSON export to restore the whole setup.
+              Restore a complete Reforge Planner setup.
             </div>
           </div>
           <button type="button" class="icon-btn" id="closeModal" aria-label="Close setup import and export dialog">×</button>
         </div>
         <div class="card-body">
-          <label class="visually-hidden" for="dataBox">Reforge Planner setup JSON</label>
+          <label class="setup-format" for="setupFormat">
+            <span>Format</span>
+            <select id="setupFormat">
+              <option value="json">JSON</option>
+              <option value="compact">Compact string</option>
+            </select>
+          </label>
+          <label class="visually-hidden" id="dataBoxLabel" for="dataBox">Reforge Planner setup</label>
           <textarea
             id="dataBox"
             spellcheck="false"
-            placeholder="Paste exported Reforge Planner JSON…"
+            placeholder="Paste exported Reforge Planner data…"
           ></textarea>
           <div class="dialog-actions">
-            <button type="button" class="secondary" id="copyData" hidden>Copy JSON</button
-            ><button type="button" class="primary" id="importData">Import JSON</button>
+            <button type="button" class="secondary" id="copyData" hidden>Copy</button
+            ><button type="button" class="primary" id="importData">Import</button>
           </div>
         </div>
       </div>
