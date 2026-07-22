@@ -47,6 +47,13 @@
     return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   }
 
+  let candidateKeySequence = 0;
+
+  function createCandidateKey() {
+    candidateKeySequence += 1;
+    return `candidate-${Date.now().toString(36)}-${candidateKeySequence.toString(36)}`;
+  }
+
   function blankItem(slot = "Item") {
     return {
       slot,
@@ -76,6 +83,43 @@
       comboCount: 1,
       comboMethod: "exactly",
     };
+  }
+
+
+  function normalizeCaps(caps = []) {
+    return [0, 1].map((index) => {
+      const source = caps[index] || {};
+      const validMethods = new Set(["atleast", "atmost", "exactly"]);
+      const hardRules = (source.rules || [])
+        .filter((rule) => validMethods.has(rule?.method))
+        .map((rule) => ({
+          method: rule.method,
+          value: Math.max(0, number(rule.value)),
+          after: number(rule.after),
+        }));
+      const legacyWeightPoints = (source.rules || [])
+        .filter((rule) => rule?.method === "new")
+        .map((rule) => ({
+          value: Math.max(0, number(rule.value)),
+          after: number(rule.after),
+        }));
+      const rules = hardRules.length
+        ? hardRules
+        : [{ method: "atleast", value: 0, after: 0 }];
+
+      for (const rule of rules) {
+        if (number(rule.after) !== 0) continue;
+        const legacy =
+          legacyWeightPoints.find((point) => point.value === rule.value) ||
+          (legacyWeightPoints.length === 1 ? legacyWeightPoints[0] : null);
+        if (legacy) rule.after = legacy.after;
+      }
+
+      return {
+        stat: STATS.includes(source.stat) ? source.stat : "None",
+        rules,
+      };
+    });
   }
 
   function normalizeFixedItems(items = []) {
@@ -108,6 +152,7 @@
     const normalized = {
       ...blankItem("Candidate item"),
       ...item,
+      candidateKey: item.candidateKey || createCandidateKey(),
       gemIds: [...(item.gemIds || [])].slice(0, MAX_GEMS),
       socketColors: [...(item.socketColors || [])].slice(0, MAX_GEMS),
       enchantIds: [...(item.enchantIds || [])].slice(0, 1),
@@ -132,5 +177,7 @@
     createDefaultState,
     normalizeFixedItems,
     normalizeCandidate,
+    normalizeCaps,
+    createCandidateKey,
   });
 })(globalThis);

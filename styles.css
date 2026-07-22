@@ -255,10 +255,7 @@
         margin-top: 0;
       }
       .cap-top {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 8px;
-        align-items: center;
+        display: block;
       }
       .cap-title {
         font-weight: 700;
@@ -270,8 +267,7 @@
       .rule {
         display: grid;
         grid-template-columns:
-          minmax(100px, 0.9fr) minmax(78px, 1fr) minmax(78px, 1fr)
-          30px;
+          minmax(100px, 0.9fr) minmax(78px, 1fr) minmax(78px, 1fr);
         gap: 7px;
         margin-top: 8px;
         align-items: end;
@@ -704,6 +700,12 @@
         justify-content: space-between;
         margin-bottom: 9px;
       }
+      .candidate-rule-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
       .candidate-rules-head h3 {
         margin: 0;
         font: 700 17px/1.25 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -930,7 +932,7 @@
       }
       @media (max-width: 420px) {
         .rule {
-          grid-template-columns: 1fr 1fr 30px;
+          grid-template-columns: 1fr 1fr;
         }
         .rule .after-field {
           grid-column: 1 / 3;
@@ -1032,6 +1034,7 @@
 .socket-border-orange { --socket-border: #ffad66; }
 .socket-border-green { --socket-border: #7fd68a; }
 .socket-border-prismatic { --socket-border: #d9e6f2; }
+.socket-border-cogwheel { --socket-border: #9bd7d5; }
 .gem-color-meta { color: #d6e1e8; }
 .gem-color-red { color: #ff8585; }
 .gem-color-yellow { color: #f4d35e; }
@@ -1040,6 +1043,7 @@
 .gem-color-orange { color: #ffad66; }
 .gem-color-green { color: #7fd68a; }
 .gem-color-prismatic { color: #d9e6f2; }
+.gem-color-cogwheel { color: #9bd7d5; }
 
 
 /* Shared alignment contract for Gear and Candidate item-editor rows. */
@@ -1085,4 +1089,11 @@
   outline: 2px solid var(--focus);
   outline-offset: 3px;
   border-radius: 2px;
+}
+
+.candidate-rule.candidateSet .candidate-set-picker summary {
+  min-width: 220px;
+}
+.candidate-rule.candidateSet > span:not(.rule-error) {
+  min-height: 39px;
 }

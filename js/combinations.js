@@ -17,15 +17,18 @@
   }
 
   function comboMatchesRules(combo, rules = []) {
-    return rules
-      .filter((rule) => rule.slots?.length)
-      .every((rule) => {
-        const selected = combo.filter((item) =>
-            rule.slots.includes(item.slot),
-          ).length,
-          maximum = Math.max(0, Math.floor(number(rule.max)));
-        return selected <= maximum;
-      });
+    return rules.every((rule) => {
+      const type = rule.type || "slotLimit";
+      if (type === "candidateSet") {
+        const keys = [...new Set(rule.candidateKeys || [])];
+        if (keys.length < 2) return true;
+        const selected = combo.filter((item) => keys.includes(item.candidateKey)).length;
+        return selected === 0 || selected === keys.length;
+      }
+      if (!rule.slots?.length) return true;
+      const selected = combo.filter((item) => rule.slots.includes(item.slot)).length;
+      return selected <= Math.max(0, Math.floor(number(rule.max)));
+    });
   }
 
   function candidateSizeRange(items, count, method) {
@@ -56,87 +59,49 @@
     { rules = [], baseItems = [], itemDb = {} } = {},
   ) {
     const valid = items.filter(candidateIsUsable),
-      slotGroups = new Map();
-    for (const item of valid)
-      slotGroups.set(item.slot, [...(slotGroups.get(item.slot) || []), item]);
-    const activeRules = rules
-        .filter((rule) => rule.slots?.length)
+      slotRules = rules
+        .filter((rule) => (rule.type || "slotLimit") === "slotLimit" && rule.slots?.length)
         .map((rule) => ({
           slots: rule.slots,
           max: Math.max(0, Math.floor(number(rule.max))),
         })),
+      setRules = rules
+        .filter((rule) => rule.type === "candidateSet")
+        .map((rule) => [...new Set(rule.candidateKeys || [])])
+        .filter((keys) => keys.length >= 2),
       baseMain = baseItems.find((item) => item.slot === "Main hand"),
       baseMainTwoHanded = isTwoHanded(baseMain, itemDb);
     let states = new Map([
-      [`0|${activeRules.map(() => 0).join(",")}|0|0`, 1n],
+      [`0|${slotRules.map(() => 0).join(",")}|${setRules.map(() => 0).join(",")}|0|0|0|`, 1n],
     ]);
 
-    for (const [slotName, group] of slotGroups) {
-      const transitions = [{ selected: 0, multiplicity: 1n }];
-      if (slotName === "Finger") {
-        transitions.push({
-          selected: 1,
-          multiplicity: BigInt(group.length) * 2n,
-        });
-        if (group.length >= 2)
-          transitions.push({
-            selected: 2,
-            multiplicity:
-              (BigInt(group.length) * BigInt(group.length - 1)) / 2n,
-          });
-      } else if (slotName === "Main hand") {
-        const twoHanded = group.filter((item) =>
-            isTwoHanded(item, itemDb),
-          ).length,
-          oneHanded = group.length - twoHanded;
-        if (oneHanded)
-          transitions.push({
-            selected: 1,
-            multiplicity: BigInt(oneHanded),
-            mainType: 1,
-          });
-        if (twoHanded)
-          transitions.push({
-            selected: 1,
-            multiplicity: BigInt(twoHanded),
-            mainType: 2,
-          });
-      } else if (group.length) {
-        transitions.push({
-          selected: 1,
-          multiplicity: BigInt(group.length),
-          offhand: slotName === "Off hand" ? 1 : undefined,
-        });
-      }
-
-      const next = new Map();
+    for (const item of valid) {
+      const next = new Map(states);
       for (const [key, ways] of states) {
-        const [sizeText, countsText, mainText, offhandText] = key.split("|"),
+        const [sizeText, ruleText, setText, mainText, offhandText, fingerText, slotsText] = key.split("|"),
           size = Number(sizeText),
-          counts = countsText ? countsText.split(",").map(Number) : [],
-          previousMain = Number(mainText),
-          previousOffhand = Number(offhandText);
-        for (const transition of transitions) {
-          const updated = counts.map((value, ruleIndex) =>
-            activeRules[ruleIndex].slots.includes(slotName)
-              ? value + transition.selected
-              : value,
-          );
-          if (
-            updated.some(
-              (value, ruleIndex) => value > activeRules[ruleIndex].max,
-            )
-          )
-            continue;
-          const mainType = transition.mainType || previousMain,
-            offhand = transition.offhand || previousOffhand;
-          if (mainType === 2 && offhand) continue;
-          const nextKey = `${size + transition.selected}|${updated.join(",")}|${mainType}|${offhand}`;
-          next.set(
-            nextKey,
-            (next.get(nextKey) || 0n) + ways * transition.multiplicity,
-          );
-        }
+          ruleCounts = ruleText ? ruleText.split(",").map(Number) : [],
+          setCounts = setText ? setText.split(",").map(Number) : [],
+          mainType = Number(mainText),
+          offhand = Number(offhandText),
+          fingerCount = Number(fingerText),
+          usedSlots = new Set(slotsText ? slotsText.split(",").filter(Boolean) : []),
+          isFinger = item.slot === "Finger";
+        if ((isFinger && fingerCount >= 2) || (!isFinger && usedSlots.has(item.slot))) continue;
+        const itemMainType = item.slot === "Main hand" ? (isTwoHanded(item, itemDb) ? 2 : 1) : mainType,
+          itemOffhand = item.slot === "Off hand" ? 1 : offhand;
+        if (itemMainType === 2 && itemOffhand) continue;
+        const updatedRules = ruleCounts.map((value, index) =>
+          slotRules[index].slots.includes(item.slot) ? value + 1 : value,
+        );
+        if (updatedRules.some((value, index) => value > slotRules[index].max)) continue;
+        const updatedSets = setCounts.map((value, index) =>
+          setRules[index].includes(item.candidateKey) ? value + 1 : value,
+        );
+        const updatedSlots = new Set(usedSlots);
+        if (!isFinger) updatedSlots.add(item.slot);
+        const nextKey = `${size + 1}|${updatedRules.join(",")}|${updatedSets.join(",")}|${itemMainType}|${itemOffhand}|${fingerCount + (isFinger ? 1 : 0)}|${[...updatedSlots].sort().join(",")}`;
+        next.set(nextKey, (next.get(nextKey) || 0n) + ways);
       }
       states = next;
     }
@@ -144,12 +109,16 @@
     const { first, last } = candidateSizeRange(valid, count, method);
     let total = 0n;
     for (const [key, ways] of states) {
-      const [sizeText, , mainText, offhandText] = key.split("|"),
+      const [sizeText, , setText, mainText, offhandText, fingerText] = key.split("|"),
         size = Number(sizeText),
+        setCounts = setText ? setText.split(",").map(Number) : [],
         mainType = Number(mainText),
-        offhand = Number(offhandText);
+        offhand = Number(offhandText),
+        fingerCount = Number(fingerText);
+      if (size < first || size > last) continue;
       if (offhand && mainType === 0 && baseMainTwoHanded) continue;
-      if (size >= first && size <= last) total += ways;
+      if (setCounts.some((value, index) => value !== 0 && value !== setRules[index].length)) continue;
+      total += ways * (fingerCount === 1 ? 2n : 1n);
     }
     return total;
   }

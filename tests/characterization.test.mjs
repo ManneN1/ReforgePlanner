@@ -195,6 +195,62 @@ test("optimizer prioritizes meeting a configured breakpoint", async () => {
   assert.equal(result.allCapsMet, true);
 });
 
+
+
+test("cap rules switch to their configured after weight", () => {
+  const weights = { ...baseState().weights, Hit: 2 };
+  const cap = {
+    stat: "Hit",
+    rules: [{ method: "atleast", value: 100, after: 0.25 }],
+  };
+  assert.equal(modules.optimizer.capScore(cap, 80, weights), 160);
+  assert.equal(modules.optimizer.capScore(cap, 140, weights), 210);
+  assert.doesNotMatch(script, /\+ Breakpoint|method: "new"|Weight breakpoint/);
+});
+
+test("legacy weight breakpoint exports migrate into the matching cap rule", () => {
+  const normalized = modules.model.normalizeCaps([
+    {
+      stat: "Hit",
+      rules: [
+        { method: "atleast", value: 100, after: 0 },
+        { method: "new", value: 100, after: 0.25 },
+      ],
+    },
+  ]);
+  assert.equal(
+    JSON.stringify(normalized[0]),
+    JSON.stringify({
+      stat: "Hit",
+      rules: [{ method: "atleast", value: 100, after: 0.25 }],
+    }),
+  );
+});
+
+test("candidate set rules require all selected set members or none", () => {
+  const weapon = item("Main hand", {}, { candidateKey: "weapon" });
+  const shield = item("Off hand", {}, { candidateKey: "shield" });
+  const helm = item("Head", {}, { candidateKey: "helm" });
+  const state = baseState({
+    comboRules: [{ type: "candidateSet", candidateKeys: ["weapon", "shield"] }],
+  });
+  const runtime = createRuntime(state);
+  const candidates = [weapon, shield, helm];
+  assert.equal(runtime.countCandidateRange(candidates, 1, "exactly"), 1n);
+  assert.equal(runtime.countCandidateRange(candidates, 2, "exactly"), 1n);
+  const pairs = [...runtime.iterateCandidateRange(candidates, 2, "exactly")];
+  assert.equal(pairs.length, 1);
+  assert.deepEqual(Array.from(pairs[0], (entry) => entry.candidateKey), ["weapon", "shield"]);
+});
+
+test("Cogwheel gems and sockets use their own database color", () => {
+  assert.match(script, /\[9, "Cogwheel"\]/);
+  assert.match(styles, /\.socket-border-cogwheel \{ --socket-border: #9bd7d5; \}/);
+  assert.match(styles, /\.gem-color-cogwheel \{ color: #9bd7d5; \}/);
+  const database = readFileSync(resolve(projectRoot, "item-db.js"), "utf8");
+  assert.match(database, /"59477":\{"n":"Subtle Cogwheel"[^}]*"c":9\}/);
+});
+
 test("Main stat follows its configured priority in Lab ranking", () => {
   const state = baseState();
   const { compareOptimizedResults } = createRuntime(state);

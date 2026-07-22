@@ -49,8 +49,8 @@
               <div>
                 <h2>Breakpoints</h2>
                 <div class="small">
-                  Add hard stat limits or change a stat's weight after a
-                  breakpoint. Two stats can have breakpoint rules.
+                  Set hard stat limits and the weight used for points above
+                  each cap. Two stats can have cap rules.
                 </div>
               </div>
             </div>
@@ -169,11 +169,13 @@
             <div>
               <h3>Combination Rules</h3>
               <div class="small">
-                Limit how many selected candidates may come from groups of
-                slots.
+                Limit candidate slots or require selected candidates to be equipped together.
               </div>
             </div>
-            <button type="button" class="secondary" id="addComboRule">+ Add Rule</button>
+            <div class="candidate-rule-actions">
+              <button type="button" class="secondary" id="addComboRule">+ Slot Limit</button>
+              <button type="button" class="secondary" id="addCandidateSetRule">+ Candidate Set</button>
+            </div>
           </div>
           <div id="comboRules"></div>
         </div>

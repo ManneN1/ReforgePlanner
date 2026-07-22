@@ -29,26 +29,24 @@
     let remaining = value,
       score = 0;
     const points = cap.rules
-      .filter((rule) => rule.method === "new")
+      .filter((rule) => ["atleast", "atmost", "exactly"].includes(rule.method))
       .sort((left, right) => left.value - right.value);
     for (let index = points.length - 1; index >= 0; index--)
       if (remaining > points[index].value) {
         score +=
-          points[index].after * (remaining - points[index].value);
+          number(points[index].after) * (remaining - points[index].value);
         remaining = points[index].value;
       }
     return score + number(weights[cap.stat]) * remaining;
   }
 
   function capAllows(cap, value) {
-    return cap.rules.every(
-      (rule) =>
-        rule.method === "new" ||
-        (rule.method === "atleast"
-          ? value >= rule.value
-          : rule.method === "atmost"
-            ? value <= rule.value
-            : value === rule.value),
+    return cap.rules.every((rule) =>
+      rule.method === "atleast"
+        ? value >= rule.value
+        : rule.method === "atmost"
+          ? value <= rule.value
+          : value === rule.value,
     );
   }
 
@@ -135,8 +133,7 @@
       if (
         cap.stat === "None" &&
         cap.rules.some(
-          (rule) =>
-            rule.value !== 0 || (rule.method === "new" && rule.after !== 0),
+          (rule) => rule.value !== 0 || number(rule.after) !== 0,
         )
       )
         throw new Error(

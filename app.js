@@ -32,6 +32,8 @@
         createDefaultState: defaults,
         normalizeFixedItems: fixedSlotItems,
         normalizeCandidate,
+        normalizeCaps,
+        createCandidateKey,
       } = ReforgePlanner.model;
       const {
         clearItem: clearSlotItem,
@@ -139,9 +141,10 @@
         [6, "Orange"],
         [7, "Purple"],
         [8, "Prismatic"],
+        [9, "Cogwheel"],
       ]);
       const socketColorInfo = (value) =>
-        SOCKET_COLORS.find(([id]) => id === Number(value)) || SOCKET_COLORS.at(-1);
+        SOCKET_COLORS.find(([id]) => id === Number(value)) || SOCKET_COLORS.find(([id]) => id === 8);
       const gemColorClass = (record) =>
         `gem-color-${socketColorInfo(record?.c)[1].toLowerCase()}`;
       const applySelectedGemColor = (select) => {
@@ -267,16 +270,15 @@
       function renderCaps() {
         const box = $("#caps");
         box.innerHTML = "";
+        state.caps = normalizeCaps(state.caps);
         state.caps.forEach((cap, ci) => {
-          if (cap.stat === "None") {
-            const baseRule = cap.rules.find((rule) => rule.method !== "new");
-            cap.rules = [baseRule || { method: "atleast", value: 0, after: 0 }];
-          }
           const c = el("div", { className: "cap" });
-          c.innerHTML = `<div class="cap-top"><span class="cap-title">Breakpoint Stat ${ci + 1}</span><button type="button" class="secondary add-rule" ${cap.stat === "None" ? "disabled" : ""}>+ Breakpoint</button></div>`;
+          c.innerHTML = `<div class="cap-top"><span class="cap-title">Breakpoint Stat ${ci + 1}</span></div>`;
           const sel = el("select", { className: "cap-stat" });
-          ["None", ...STATS].forEach((s) =>
-            sel.append(el("option", { value: s, selected: s === cap.stat }, s)),
+          ["None", ...STATS].forEach((stat) =>
+            sel.append(
+              el("option", { value: stat, selected: stat === cap.stat }, stat),
+            ),
           );
           sel.onchange = () => {
             cap.stat = sel.value;
@@ -285,100 +287,73 @@
             renderCaps();
           };
           c.append(sel);
+
           const rules = el("div");
-          cap.rules.forEach((r, ri) => {
-            const row = el("div", {
-              className: "rule " + (r.method === "new" ? "new" : ""),
-            });
-            const methodField = el("label", { className: "rule-field" }),
-              methodLabel = el("span", {}, "Rule");
-            methodField.append(methodLabel);
-            if (r.method === "new") {
-              methodField.append(
+          cap.rules.forEach((rule) => {
+            const row = el("div", { className: "rule" });
+            const methodField = el("label", { className: "rule-field" });
+            methodField.append(el("span", {}, "Rule"));
+            const methodSelect = el("select", { disabled: cap.stat === "None" });
+            [
+              ["atleast", "At least"],
+              ["atmost", "At most"],
+              ["exactly", "Exactly"],
+            ].forEach(([value, text]) =>
+              methodSelect.append(
                 el(
-                  "div",
-                  { className: "rule-method-static" },
-                  "Weight breakpoint",
+                  "option",
+                  { value, selected: value === rule.method },
+                  text,
                 ),
-              );
-            } else {
-              const ms = el("select", { disabled: cap.stat === "None" });
-              [
-                ["atleast", "At least"],
-                ["atmost", "At most"],
-                ["exactly", "Exactly"],
-              ].forEach(([v, t]) =>
-                ms.append(
-                  el("option", { value: v, selected: v === r.method }, t),
-                ),
-              );
-              ms.onchange = () => (r.method = ms.value);
-              methodField.append(ms);
-            }
-            const valueField = el("label", { className: "rule-field" }),
-              valueLabel = el("span", {}, "Value"),
-              val = el("input", {
-                type: "number",
-                min: 0,
-                value: r.value,
-                disabled: cap.stat === "None",
-                title:
-                  r.method === "new"
-                    ? "Stat value where this new weight begins"
-                    : "Required stat value",
-              });
-            configureIntegerField(val, "Breakpoint value");
-            val.oninput = () => (r.value = Math.max(0, n(val.value)));
-            valueField.append(valueLabel, val);
-            const afterField = el("label", {
-                className: "rule-field after-field",
-              }),
-              afterLabel = el("span", {}, "Weight after"),
-              after = el("input", {
-                type: "number",
-                value: r.after,
-                step: "any",
-                disabled: cap.stat === "None",
-                title: "Weight after breakpoint",
-              });
-            after.oninput = () => (r.after = n(after.value));
-            afterField.append(afterLabel, after);
-            const del = el(
-              "button",
-              {
-                className: "icon-btn",
-                type: "button",
-                title: "Remove",
-                ariaLabel: `Remove breakpoint ${ri + 1}`,
-                disabled: cap.stat === "None",
-              },
-              "×",
+              ),
             );
-            del.onclick = () => {
-              cap.rules.splice(ri, 1);
-              renderCaps();
-            };
-            row.append(methodField, valueField, afterField, del);
+            methodSelect.onchange = () => (rule.method = methodSelect.value);
+            methodField.append(methodSelect);
+
+            const valueField = el("label", { className: "rule-field" });
+            valueField.append(el("span", {}, "Value"));
+            const valueInput = el("input", {
+              type: "number",
+              min: 0,
+              value: rule.value,
+              disabled: cap.stat === "None",
+              title: "Required stat value",
+            });
+            configureIntegerField(valueInput, "Breakpoint value");
+            valueInput.oninput = () =>
+              (rule.value = Math.max(0, n(valueInput.value)));
+            valueField.append(valueInput);
+
+            const afterField = el("label", {
+              className: "rule-field after-field",
+            });
+            afterField.append(el("span", {}, "Weight after"));
+            const afterInput = el("input", {
+              type: "number",
+              value: rule.after,
+              step: "any",
+              disabled: cap.stat === "None",
+              title: "Weight used for stat points above this value",
+            });
+            afterInput.oninput = () => (rule.after = n(afterInput.value));
+            afterField.append(afterInput);
+
+            row.append(methodField, valueField, afterField);
             rules.append(row);
           });
-          c.querySelector(".add-rule").onclick = () => {
-            cap.rules.push({ method: "atleast", value: 0, after: 0 });
-            renderCaps();
-          };
           c.append(rules);
           c.append(
             el(
               "div",
               { className: "cap-help" },
               cap.stat === "None"
-                ? "Select a stat before adding a cap point."
-                : "Each breakpoint combines its rule and stat value with the weight used after that breakpoint.",
+                ? "Select a stat to configure its cap."
+                : "The base stat weight applies up to the value; Weight after applies to points above it.",
             ),
           );
           box.append(c);
         });
       }
-
 
 
 
@@ -743,7 +718,12 @@
         });
       }
       function blankCandidate() {
-        return { ...blankItem("Head"), slot: "Head", name: "Candidate item" };
+        return {
+          ...blankItem("Head"),
+          slot: "Head",
+          name: "Candidate item",
+          candidateKey: createCandidateKey(),
+        };
       }
       function renderCandidates() {
         state.candidates ??= [];
@@ -1033,6 +1013,7 @@
           del.onclick = () => {
             state.candidates.splice(index, 1);
             renderCandidates();
+            renderComboRules();
           };
           delTd.append(del);
           tr.append(delTd);
@@ -1042,66 +1023,130 @@
       }
       function renderComboRules() {
         state.comboRules ??= [];
-        const box = $("#comboRules");
+        state.candidates.forEach((candidate) => {
+          candidate.candidateKey ||= createCandidateKey();
+        });
+        const candidateKeys = new Set(state.candidates.map((candidate) => candidate.candidateKey)),
+          box = $("#comboRules");
         box.innerHTML = "";
         state.comboRules.forEach((rule, index) => {
-          rule.slots = (rule.slots || []).filter((slot) =>
-            LAB_SLOTS.includes(slot),
-          );
-          const row = el("div", { className: "candidate-rule" }),
-            maximum = el("input", {
-              type: "number",
-              min: 0,
-              value: rule.max,
-              title: "Maximum candidates from the selected slots",
-            }),
-            slots = el("details", { className: "rule-slots" }),
-            summary = el("summary", { className: "secondary" }),
-            options = el("div", { className: "rule-slot-options" }),
+          rule.type ||= "slotLimit";
+          const row = el("div", { className: `candidate-rule ${rule.type}` }),
             error = el("div", { className: "rule-error" });
-          configureIntegerField(maximum, "Maximum candidate count");
-          const validateRule = () => {
-            let message = "";
-            maximum.setCustomValidity("");
-            if (!rule.slots.length)
-              message = "Select at least one slot for this rule.";
-            else if (!maximum.checkValidity())
-              message = maximum.validationMessage;
-            row.classList.toggle("invalid", Boolean(message));
-            slots.classList.toggle("invalid", !rule.slots.length);
-            error.textContent = message;
-            return !message;
-          };
-          row.validateRule = validateRule;
-          const updateSummary = () => {
-            summary.textContent = rule.slots.length
-              ? `${rule.slots.length} slot${rule.slots.length === 1 ? "" : "s"} selected ▾`
-              : "Select slots ▾";
-          };
-          updateSummary();
-          LAB_SLOTS.forEach((slotName) => {
-            const checkbox = el("input", {
-                type: "checkbox",
-                checked: rule.slots.includes(slotName),
+          let validateRule;
+
+          if (rule.type === "candidateSet") {
+            rule.candidateKeys = [...new Set(rule.candidateKeys || [])].filter((key) =>
+              candidateKeys.has(key),
+            );
+            const candidates = el("details", { className: "rule-slots candidate-set-picker" }),
+              summary = el("summary", { className: "secondary" }),
+              options = el("div", { className: "rule-slot-options" });
+            const updateSummary = () => {
+              summary.textContent = rule.candidateKeys.length
+                ? `${rule.candidateKeys.length} candidate${rule.candidateKeys.length === 1 ? "" : "s"} selected ▾`
+                : "Select candidates ▾";
+            };
+            state.candidates.forEach((candidate, candidateIndex) => {
+              const checkbox = el("input", {
+                  type: "checkbox",
+                  checked: rule.candidateKeys.includes(candidate.candidateKey),
+                }),
+                candidateName = candidate.name?.trim() && candidate.name !== "Candidate item"
+                  ? candidate.name.trim()
+                  : `Candidate ${candidateIndex + 1}`,
+                label = el("label"),
+                text = el("span");
+              text.textContent = `${candidateName} (${candidate.slot})`;
+              checkbox.onchange = () => {
+                rule.candidateKeys = checkbox.checked
+                  ? [...new Set([...rule.candidateKeys, candidate.candidateKey])]
+                  : rule.candidateKeys.filter((key) => key !== candidate.candidateKey);
+                updateSummary();
+                validateRule();
+                updateComboEstimate();
+              };
+              label.append(checkbox, text);
+              options.append(label);
+            });
+            candidates.append(summary, options);
+            validateRule = () => {
+              const message = rule.candidateKeys.length < 2
+                ? "Select at least two candidates for a set."
+                : "";
+              row.classList.toggle("invalid", Boolean(message));
+              candidates.classList.toggle("invalid", Boolean(message));
+              error.textContent = message;
+              return !message;
+            };
+            row.append(
+              el("span", {}, "Equip"),
+              candidates,
+              el("span", {}, "together: either all selected candidates or none"),
+            );
+            updateSummary();
+          } else {
+            rule.slots = (rule.slots || []).filter((slot) => LAB_SLOTS.includes(slot));
+            const maximum = el("input", {
+                type: "number",
+                min: 0,
+                value: rule.max,
+                title: "Maximum candidates from the selected slots",
               }),
-              label = el("label", {}, `<span>${slotName}</span>`);
-            checkbox.onchange = () => {
-              rule.slots = checkbox.checked
-                ? [...new Set([...rule.slots, slotName])]
-                : rule.slots.filter((slot) => slot !== slotName);
-              updateSummary();
+              slots = el("details", { className: "rule-slots" }),
+              summary = el("summary", { className: "secondary" }),
+              options = el("div", { className: "rule-slot-options" });
+            configureIntegerField(maximum, "Maximum candidate count");
+            validateRule = () => {
+              let message = "";
+              maximum.setCustomValidity("");
+              if (!rule.slots.length) message = "Select at least one slot for this rule.";
+              else if (!maximum.checkValidity()) message = maximum.validationMessage;
+              row.classList.toggle("invalid", Boolean(message));
+              slots.classList.toggle("invalid", !rule.slots.length);
+              error.textContent = message;
+              return !message;
+            };
+            const updateSummary = () => {
+              summary.textContent = rule.slots.length
+                ? `${rule.slots.length} slot${rule.slots.length === 1 ? "" : "s"} selected ▾`
+                : "Select slots ▾";
+            };
+            LAB_SLOTS.forEach((slotName) => {
+              const checkbox = el("input", {
+                  type: "checkbox",
+                  checked: rule.slots.includes(slotName),
+                }),
+                label = el("label"),
+                text = el("span");
+              text.textContent = slotName;
+              checkbox.onchange = () => {
+                rule.slots = checkbox.checked
+                  ? [...new Set([...rule.slots, slotName])]
+                  : rule.slots.filter((slot) => slot !== slotName);
+                updateSummary();
+                validateRule();
+                updateComboEstimate();
+              };
+              label.append(checkbox, text);
+              options.append(label);
+            });
+            slots.append(summary, options);
+            maximum.oninput = () => {
+              rule.max = Math.max(0, Math.floor(n(maximum.value)));
               validateRule();
               updateComboEstimate();
             };
-            label.prepend(checkbox);
-            options.append(label);
-          });
-          slots.append(summary, options);
-          maximum.oninput = () => {
-            rule.max = Math.max(0, Math.floor(n(maximum.value)));
-            validateRule();
-            updateComboEstimate();
-          };
+            row.append(
+              el("span", {}, "No more than"),
+              maximum,
+              el("span", {}, "candidates from"),
+              slots,
+              el("span", {}, "at once"),
+            );
+            updateSummary();
+          }
+
           const remove = el(
             "button",
             {
@@ -1117,15 +1162,8 @@
             renderComboRules();
             updateComboEstimate();
           };
-          row.append(
-            el("span", {}, "No more than"),
-            maximum,
-            el("span", {}, "candidates from"),
-            slots,
-            el("span", {}, "at once"),
-            remove,
-            error,
-          );
+          row.validateRule = validateRule;
+          row.append(remove, error);
           box.append(row);
           validateRule();
         });
@@ -1291,7 +1329,6 @@
         return active
           .map((c) => {
             const hard = c.rules
-              .filter((x) => x.method !== "new")
               .map(
                 (x) =>
                   `${x.method === "atleast" ? "≥" : x.method === "atmost" ? "≤" : "="}${x.value}`,
@@ -1329,7 +1366,7 @@
         state = {
           weights: { ...defaults().weights, ...x.weights },
           baseline: { ...defaults().baseline, ...x.baseline },
-          caps: x.caps,
+          caps: normalizeCaps(x.caps),
           items: fixedSlotItems(x.items),
           candidates: (x.candidates || []).map(normalizeCandidate),
           comboRules: x.comboRules || [],
@@ -1472,7 +1509,12 @@
       };
       $("#addComboRule").onclick = () => {
         state.comboRules ??= [];
-        state.comboRules.push({ max: 1, slots: [] });
+        state.comboRules.push({ type: "slotLimit", max: 1, slots: [] });
+        renderComboRules();
+      };
+      $("#addCandidateSetRule").onclick = () => {
+        state.comboRules ??= [];
+        state.comboRules.push({ type: "candidateSet", candidateKeys: [] });
         renderComboRules();
       };
       $("#comboCount").oninput = () => updateComboEstimate();
