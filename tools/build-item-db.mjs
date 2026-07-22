@@ -52,6 +52,9 @@ for (const item of input.items || []) {
     ...[0, 1, 3].map((index) => Number(scaling?.stats?.[index] || 0)),
   );
   if (slots[item.type]) record.t = slots[item.type];
+  // Type 13 contains weapons, shields, and caster off-hands. handType 3 is
+  // off-hand-only and must never be offered as a Main hand candidate.
+  if (item.type === 13 && item.handType === 3) record.t = "Off hand";
   record.g = (item.gemSockets || []).length;
   if (item.gemSockets?.length) record.k = item.gemSockets.map(Number);
   if (item.socketBonus?.some(Number)) record.b = statRecord(item.socketBonus);
@@ -68,18 +71,51 @@ for (const item of input.items || []) {
 for (const gem of input.gems || [])
   gemOutput[gem.id] = { ...bonusRecord(gem), c: Number(gem.color || 0) };
 for (const enchant of input.enchants || []) {
-  enchantOutput[enchant.spellId || enchant.effectId] = {
+  const appliedId = enchant.spellId || enchant.effectId;
+  enchantOutput[appliedId] = {
     ...bonusRecord(enchant),
     t: slots[enchant.type] || "",
   };
 }
-// Wowhead planner payloads sometimes use the crafting spell immediately after
-// the applied enchant aura. Retain those IDs for import without listing them.
-for (const enchant of input.enchants || []) {
-  const appliedId = enchant.spellId || enchant.effectId;
-  const plannerId = Number(appliedId) + 1;
-  if (!enchantOutput[plannerId])
-    enchantOutput[plannerId] = { ...enchantOutput[appliedId], a: 1 };
+// Wowhead planner payloads sometimes use a recipe/runeforge spell ID rather
+// than the applied aura ID stored by the item database. These relationships are
+// not arithmetic; keep an explicit, verified mapping only.
+const wowheadPlannerEnchantIds = new Map([
+  // Cataclysm profession enchants.
+  [74245, 74246], // Landslide
+  [94746, 94747], // Power Torrent
+  [95471, 95472], // Mighty Agility
+  [95653, 95654], // Heartsong
+  [95713, 95714], // Gnomish X-Ray Scope
+  [96262, 96263], // Mighty Intellect
+  [96264, 96265], // Bracer Agility
+  [99622, 99623], // Flintlocke's Woodchucker
+  [74249, 74250], // Peerless Stats
+  [75177, 75178], // Swordguard Embroidery
+  [43588, 93448], // Pyrium Weapon Chain
+
+  // Death Knight runeforges: applied aura -> runeforging spell.
+  [53387, 53323], // Rune of Swordshattering
+  [56903, 53331], // Rune of Lichbane
+  [53362, 53342], // Rune of Spellshattering
+  [53365, 53344], // Rune of the Fallen Crusader
+  [53386, 53341], // Rune of Cinderglacier
+  [50401, 53343], // Rune of Razorice
+  [54448, 54446], // Rune of Swordbreaking
+  [54449, 54447], // Rune of Spellbreaking
+  [62157, 62158], // Rune of the Stoneskin Gargoyle
+  [70163, 70164], // Rune of the Nerubian Carapace
+]);
+
+for (const [appliedId, plannerId] of wowheadPlannerEnchantIds) {
+  const record = enchantOutput[appliedId];
+  if (!record)
+    throw new Error(`Missing canonical enchant ${appliedId} for planner ID ${plannerId}.`);
+  if (enchantOutput[plannerId] && plannerId !== appliedId)
+    throw new Error(`Planner enchant ID ${plannerId} conflicts with a canonical enchant.`);
+  record.p = plannerId;
+  if (plannerId !== appliedId)
+    enchantOutput[plannerId] = { ...record, a: 1, c: appliedId };
 }
 
 fs.writeFileSync(

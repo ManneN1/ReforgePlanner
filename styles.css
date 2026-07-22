@@ -1195,14 +1195,11 @@
   margin-right: 2px;
 }
 
-.base-result-export-actions,
 .result-export-actions {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-}
-
-.result-export-actions {
+  flex-wrap: wrap;
   margin-top: 0.75rem;
   justify-content: flex-start;
 }
@@ -1212,9 +1209,6 @@
   overflow-wrap: anywhere;
 }
 
-.base-result-export-actions .generated-wowhead-link {
-  text-align: right;
-}
 .generated-wowhead-link a {
   color: var(--accent);
 }
@@ -1230,3 +1224,6 @@
 .setup-format select {
   width: 100%;
 }
+
+.enchant-stack { display: grid; gap: 0.35rem; min-width: 0; }
+.enchant-stack select { width: 100%; min-width: 0; }

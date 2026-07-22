@@ -251,7 +251,7 @@
           .split(/[ ;]+/)
           .map((value) => Math.floor(number(value)))
           .filter(Boolean)
-          .slice(0, 1);
+          .slice(0, 3);
         STATS.forEach((stat) => {
           if (header.includes(stat.toLowerCase()))
             item.stats[stat] = Math.max(

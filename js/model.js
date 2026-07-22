@@ -146,7 +146,7 @@
         mainStat: Math.max(0, number(item.mainStat)),
         gemIds: [...(item.gemIds || [])].slice(0, MAX_GEMS),
         socketColors: [...(item.socketColors || [])].slice(0, MAX_GEMS),
-        enchantIds: [...(item.enchantIds || [])].slice(0, 1),
+        enchantIds: [...(item.enchantIds || [])].slice(0, 3),
         twoHanded: Boolean(item.twoHanded),
         stats: { ...blankItem(slot).stats, ...(item.stats || {}) },
       };
@@ -160,7 +160,7 @@
       candidateKey: item.candidateKey || createCandidateKey(),
       gemIds: [...(item.gemIds || [])].slice(0, MAX_GEMS),
       socketColors: [...(item.socketColors || [])].slice(0, MAX_GEMS),
-      enchantIds: [...(item.enchantIds || [])].slice(0, 1),
+      enchantIds: [...(item.enchantIds || [])].slice(0, 3),
       stats: { ...blankItem().stats, ...(item.stats || {}) },
     };
     if (normalized.slot === "Finger 1" || normalized.slot === "Finger 2")

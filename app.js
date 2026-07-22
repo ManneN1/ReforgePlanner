@@ -255,6 +255,14 @@
           glyphHash: profile.glyphHash || "",
         };
       }
+      function canonicalEnchantId(enchantId) {
+        const id = Number(enchantId) || 0;
+        return Number(ENCHANT_DB[id]?.c || id);
+      }
+      function wowheadPlannerEnchantId(enchantId) {
+        const canonicalId = canonicalEnchantId(enchantId);
+        return Number(ENCHANT_DB[canonicalId]?.p || canonicalId);
+      }
       function wowheadProfileForGear(gear, result) {
         const reforgeBySlot = new Map();
         (result?.items || []).forEach((item, index) => {
@@ -276,7 +284,9 @@
                   : Number(item.randomEnchantId),
               reforgeId: reforgeBySlot.get(item.slot) || undefined,
               gemIds: (item.gemIds || []).filter(Boolean).map(Number),
-              enchantIds: (item.enchantIds || []).filter(Boolean).map(Number),
+              enchantIds: (item.enchantIds || [])
+                .filter(Boolean)
+                .map(wowheadPlannerEnchantId),
             })),
         };
       }
@@ -493,6 +503,37 @@
           updateComboEstimate();
         };
         return input;
+      }
+
+      function buildEnchantControls(item, enchantSlot, disabled, rerender) {
+        const wrapper = el("div", { className: "enchant-stack" });
+        const availableEnchants = Object.entries(ENCHANT_DB)
+          .filter(([, record]) => enchantSlot && !record.a && record.t === enchantSlot)
+          .sort((a, b) => a[1].n.localeCompare(b[1].n));
+        const currentIds = enchantSlot
+          ? (item.enchantIds || []).filter(Boolean).slice(0, 3)
+          : [];
+        const rowCount = Math.max(1, currentIds.length);
+        for (let index = 0; index < rowCount; index++) {
+          const currentEnchantId = String(currentIds[index] || "");
+          const currentAlias = ENCHANT_DB[currentEnchantId];
+          const choices = currentAlias?.a
+            ? [[currentEnchantId, currentAlias], ...availableEnchants]
+            : availableEnchants;
+          const select = el("select", { disabled: disabled || !enchantSlot });
+          select.append(el("option", { value: "" }, enchantSlot ? "No Enchant" : "N/A"));
+          choices.forEach(([enchantId, record]) =>
+            select.append(el("option", { value: enchantId, selected: currentEnchantId === enchantId }, record.n)),
+          );
+          select.onchange = () => {
+            const next = [...currentIds];
+            next[index] = select.value ? Number(select.value) : 0;
+            item.enchantIds = next.filter(Boolean).slice(0, 3);
+            if (currentIds.length > 1 && !select.value) rerender();
+          };
+          wrapper.append(select);
+        }
+        return wrapper;
       }
 
       function renderGear() {
@@ -740,44 +781,9 @@
                   : item.slot === "Off hand"
                     ? "Main hand"
                     : item.slot;
-          const availableEnchants = Object.entries(ENCHANT_DB)
-            .filter(
-              ([, record]) =>
-                enchantSlot && !record.a && record.t === enchantSlot,
-            )
-            .sort((a, b) => a[1].n.localeCompare(b[1].n));
-          const enchant = el("select", {
-              disabled: offhandDisabled || !enchantSlot,
-            }),
-            currentEnchantId = enchantSlot
-              ? String(item.enchantIds?.[0] || "")
-              : "",
-            currentAlias = ENCHANT_DB[currentEnchantId],
-            choices = currentAlias?.a
-              ? [[currentEnchantId, currentAlias], ...availableEnchants]
-              : availableEnchants;
-          enchant.append(
-            el(
-              "option",
-              { value: "" },
-              enchantSlot ? "No Enchant" : "Not Applicable",
-            ),
+          enchantsTd.append(
+            buildEnchantControls(item, enchantSlot, offhandDisabled, renderGear),
           );
-          choices.forEach(([enchantId, record]) =>
-            enchant.append(
-              el(
-                "option",
-                {
-                  value: enchantId,
-                  selected: currentEnchantId === enchantId,
-                },
-                record.n,
-              ),
-            ),
-          );
-          enchant.onchange = () =>
-            (item.enchantIds = enchant.value ? [Number(enchant.value)] : []);
-          enchantsTd.append(enchant);
           tr.append(enchantsTd);
           b.append(tr);
         });
@@ -1012,8 +1018,8 @@
             gemsTd.append(addGem);
           }
           tr.append(gemsTd);
-          const enchantsTd = el("td"),
-            enchantSlot =
+          const enchantsTd = el("td");
+          const enchantSlot =
               item.slot === "Neck"
                 ? null
                 : item.slot === "Finger"
@@ -1024,45 +1030,10 @@
                       ? "Trinket 1"
                       : item.slot === "Off hand"
                         ? "Main hand"
-                        : item.slot,
-            availableEnchants = Object.entries(ENCHANT_DB)
-              .filter(
-                ([, enchantRecord]) =>
-                  enchantSlot &&
-                  !enchantRecord.a &&
-                  enchantRecord.t === enchantSlot,
-              )
-              .sort((a, b) => a[1].n.localeCompare(b[1].n));
-          const enchant = el("select", { disabled: !enchantSlot }),
-            currentEnchantId = enchantSlot
-              ? String(item.enchantIds?.[0] || "")
-              : "",
-            currentAlias = ENCHANT_DB[currentEnchantId],
-            choices = currentAlias?.a
-              ? [[currentEnchantId, currentAlias], ...availableEnchants]
-              : availableEnchants;
-          enchant.append(
-            el(
-              "option",
-              { value: "" },
-              enchantSlot ? "No Enchant" : "Not Applicable",
-            ),
+                        : item.slot;
+          enchantsTd.append(
+            buildEnchantControls(item, enchantSlot, false, renderCandidates),
           );
-          choices.forEach(([enchantId, enchantRecord]) =>
-            enchant.append(
-              el(
-                "option",
-                {
-                  value: enchantId,
-                  selected: currentEnchantId === enchantId,
-                },
-                enchantRecord.n,
-              ),
-            ),
-          );
-          enchant.onchange = () =>
-            (item.enchantIds = enchant.value ? [Number(enchant.value)] : []);
-          enchantsTd.append(enchant);
           tr.append(enchantsTd);
           const delTd = el("td"),
             del = el(
@@ -1680,7 +1651,7 @@
               : "Base set (no candidates)";
             const originalRank = defaultRank.get(record),
               detailId = `combo-detail-${originalRank}`;
-            return `<tr class="combo-main-row" tabindex="0" role="button" aria-expanded="false" aria-controls="${detailId}" aria-label="Toggle details for original result ${originalRank}" data-detail-id="${detailId}"><td>${originalRank}</td><td>${equippedCandidates}</td><td class="${result.allCapsMet ? "cap-ok" : "cap-bad"}">${esc(capSummary(result.capResults))}</td>${TOTAL_STATS.map((stat) => `<td>${result.totals[stat]}</td>`).join("")}</tr><tr class="combo-detail-row" id="${detailId}" hidden><td colspan="${TOTAL_STATS.length + 3}"><div class="summary">${resultSummaryHtml(result)}</div><div class="result-detail-grid"><section><h3 class="section-title">Final Stats</h3><div class="final-stats"><table aria-label="Final stats for original result ${originalRank}"><thead><tr><th scope="col">Stat</th><th scope="col">Before</th><th scope="col">Change</th><th scope="col">Final</th></tr></thead><tbody>${statRows}</tbody></table></div><div class="result-export-actions"><button type="button" class="secondary combo-wowhead-export" data-record-index="${index}">Generate WowHead Gear Planner Link</button><div class="generated-wowhead-link" data-wowhead-link-index="${index}" hidden></div></div></section><section><h3 class="section-title">Per-Item Reforges</h3><div class="result-table-wrap"><table class="result-table" aria-label="Per-item reforges for original result ${originalRank}"><thead><tr><th scope="col">Item</th><th scope="col">Recommendation</th><th scope="col">Amount</th></tr></thead><tbody>${reforgeRows}</tbody></table></div></section></div></td></tr>`;
+            return `<tr class="combo-main-row" tabindex="0" role="button" aria-expanded="false" aria-controls="${detailId}" aria-label="Toggle details for original result ${originalRank}" data-detail-id="${detailId}"><td>${originalRank}</td><td>${equippedCandidates}</td><td class="${result.allCapsMet ? "cap-ok" : "cap-bad"}">${esc(capSummary(result.capResults))}</td>${TOTAL_STATS.map((stat) => `<td>${result.totals[stat]}</td>`).join("")}</tr><tr class="combo-detail-row" id="${detailId}" hidden><td colspan="${TOTAL_STATS.length + 3}"><div class="summary">${resultSummaryHtml(result)}</div><div class="result-detail-grid"><section><h3 class="section-title">Final Stats</h3><div class="final-stats"><table aria-label="Final stats for original result ${originalRank}"><thead><tr><th scope="col">Stat</th><th scope="col">Before</th><th scope="col">Change</th><th scope="col">Final</th></tr></thead><tbody>${statRows}</tbody></table></div><div class="result-export-actions"><button type="button" class="secondary combo-wowhead-export" data-record-index="${index}">Generate WowHead Gear Planner Link</button><div class="generated-wowhead-link" data-wowhead-link-index="${index}" hidden></div><button type="button" class="secondary combo-wowhead-merge" data-record-index="${index}">Merge Wowhead Planners</button></div></section><section><h3 class="section-title">Per-Item Reforges</h3><div class="result-table-wrap"><table class="result-table" aria-label="Per-item reforges for original result ${originalRank}"><thead><tr><th scope="col">Item</th><th scope="col">Recommendation</th><th scope="col">Amount</th></tr></thead><tbody>${reforgeRows}</tbody></table></div></section></div></td></tr>`;
           })
           .join("");
         document.querySelectorAll(".combo-sort").forEach((button) => {
@@ -1734,6 +1705,16 @@
               const target = document.querySelector(`[data-wowhead-link-index="${button.dataset.recordIndex}"]`);
               if (target) renderGeneratedWowheadLink(target, wowheadProfileUrl(gear, record.result));
             }
+          };
+        });
+        document.querySelectorAll(".combo-wowhead-merge").forEach((button) => {
+          button.onclick = (event) => {
+            event.stopPropagation();
+            const record = comboRunResults[Number(button.dataset.recordIndex)];
+            if (!record) return;
+            const gear = comboGearVariants(record.combo, state.items, ITEM_DB)[0];
+            if (gear)
+              openMergeWowheadWithPlannerA(wowheadProfileUrl(gear, record.result));
           };
         });
       }
@@ -2005,7 +1986,9 @@
                   ? ""
                   : String(source.randomEnchantId);
               item.gemIds = (source.gemIds || []).slice(0, MAX_GEMS);
-              item.enchantIds = (source.enchantIds || []).slice(0, 1);
+              item.enchantIds = (source.enchantIds || [])
+                .slice(0, 3)
+                .map(canonicalEnchantId);
               try {
                 await fillFromIdWithFallback(
                   item,
@@ -2051,7 +2034,13 @@
       };
 
       const mergeWowheadDialog = ReforgePlanner.modal.createModalController($("#mergeWowheadModal"));
-      $("#mergeWowhead").onclick = () => mergeWowheadDialog.open($("#mergeWowheadA"));
+      function openMergeWowheadWithPlannerA(url = "") {
+        $("#mergeWowheadA").value = url;
+        $("#mergeWowheadB").value = "";
+        $("#mergedWowheadLink").hidden = true;
+        $("#mergedWowheadLink").innerHTML = "";
+        mergeWowheadDialog.open($("#mergeWowheadB"));
+      }
       $("#closeMergeWowhead").onclick = mergeWowheadDialog.close;
       $("#cancelMergeWowhead").onclick = mergeWowheadDialog.close;
       $("#createMergedWowhead").onclick = () => {
@@ -2061,6 +2050,7 @@
           const selected = (name) => document.querySelector(`input[name="merge-${name}"]:checked`)?.value || "left";
           const merged = mergeWowheadGearPlanners(left, right, {
             talents: selected("talents"),
+            gear: selected("gear"),
             reforges: selected("reforges"),
             gems: selected("gems"),
             enchants: selected("enchants"),
@@ -2079,6 +2069,10 @@
           $("#baseWowheadLink"),
           wowheadProfileUrl(state.items, lastResult),
         );
+      };
+      $("#mergeBaseWowhead").onclick = () => {
+        if (!lastResult) return;
+        openMergeWowheadWithPlannerA(wowheadProfileUrl(state.items, lastResult));
       };
       $("#toggleResults").onclick = () => {
         const body = $("#resultsBody"),

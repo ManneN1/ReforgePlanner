@@ -425,13 +425,13 @@ test("state and CSV normalization enforce gem and enchant limits", () => {
     item("Head", {}, { gemIds: [1, 2, 3, 4], enchantIds: [10, 11] }),
   ]).find((entry) => entry.slot === "Head");
   assert.deepEqual(Array.from(normalized.gemIds), [1, 2, 3]);
-  assert.deepEqual(Array.from(normalized.enchantIds), [10]);
+  assert.deepEqual(Array.from(normalized.enchantIds), [10, 11]);
 
   const [parsed] = parseCsv(
     'Item,Gem IDs,Enchant IDs\n"Custom","1;2;3;4","10;11"',
   );
   assert.deepEqual(Array.from(parsed.gemIds), [1, 2, 3]);
-  assert.deepEqual(Array.from(parsed.enchantIds), [10]);
+  assert.deepEqual(Array.from(parsed.enchantIds), [10, 11]);
 });
 
 test("Wowhead parser decodes the current Cataclysm planner format", () => {
@@ -794,6 +794,22 @@ test("mutual exclusion rules support candidate sets as an entity", () => {
   ), BigInt(combos.length));
 });
 
+
+
+test("off-hand-only database items retain the Off hand slot", () => {
+  const context = { globalThis: null };
+  context.globalThis = context;
+  vm.runInNewContext(
+    readFileSync(resolve(projectRoot, "item-db.js"), "utf8"),
+    context,
+    { filename: "item-db.js" },
+  );
+  for (const id of [56289, 56306, 56349]) {
+    assert.equal(context.ITEM_DB[String(id)].t, "Off hand");
+    assert.equal(context.ITEM_DB[String(id)].h, 3);
+  }
+});
+
 test("Wowhead planner encoding round-trips talents, glyphs, reforges, gems, and enchants", () => {
   const require = createRequire(import.meta.url);
   const parse = require(resolve(projectRoot, "wowhead-parser.js"));
@@ -818,12 +834,12 @@ test("Wowhead planner merge can select independent augmentation sources", () => 
     ...left, classSlug: "death-knight", raceSlug: "orc", glyphHash: "B",
     items: [{ slotId: 1, itemId: 200, reforgeId: 168, gemIds: [3], enchantIds: [4] }],
   };
-  const merged = parse.merge(left, right, { talents: "right", reforges: "right", gems: "left", enchants: "right" });
+  const merged = parse.merge(left, right, { talents: "right", gear: "right", reforges: "left", gems: "right", enchants: "left" });
   assert.equal(merged.classSlug, "death-knight");
-  assert.equal(merged.items[0].itemId, 100);
-  assert.equal(merged.items[0].reforgeId, 168);
-  assert.deepEqual(merged.items[0].gemIds, [1]);
-  assert.deepEqual(merged.items[0].enchantIds, [4]);
+  assert.equal(merged.items[0].itemId, 200);
+  assert.equal(merged.items[0].reforgeId, 113);
+  assert.deepEqual(merged.items[0].gemIds, [3]);
+  assert.deepEqual(merged.items[0].enchantIds, [2]);
 });
 
 
@@ -889,4 +905,105 @@ test("Wowhead merge planner URLs use compact single-line inputs", () => {
   assert.match(html, /<input id="mergeWowheadA"[^>]*type="url"/);
   assert.match(html, /<input id="mergeWowheadB"[^>]*type="url"/);
   assert.doesNotMatch(html, /<textarea id="mergeWowhead[AB]"/);
+  assert.match(html, /<span>Gear and variants<\/span><label><input type="radio" name="merge-gear" value="left" checked>/);
+  assert.match(script, /gear: selected\("gear"\)/);
+});
+
+test("Wowhead enchant export uses planner spell IDs and normalizes imported aliases", () => {
+  const context = { globalThis: null };
+  context.globalThis = context;
+  vm.runInNewContext(
+    readFileSync(resolve(projectRoot, "item-db.js"), "utf8"),
+    context,
+    { filename: "item-db.js" },
+  );
+  const landslide = context.ENCHANT_DB[74245];
+  const plannerAlias = context.ENCHANT_DB[74246];
+  assert.equal(landslide.n, "Enchant Weapon - Landslide");
+  assert.equal(landslide.p, 74246);
+  assert.equal(plannerAlias.c, 74245);
+  assert.equal(plannerAlias.a, 1);
+  assert.match(script, /function wowheadPlannerEnchantId\(enchantId\)/);
+  assert.match(script, /\.map\(wowheadPlannerEnchantId\)/);
+  assert.match(script, /\.map\(canonicalEnchantId\)/);
+});
+
+
+test("Rogue Wowhead planner imports verified enchant aliases and multiple slot enchants", () => {
+  const require = createRequire(import.meta.url);
+  const parseWowheadGearPlanner = require(resolve(projectRoot, "wowhead-parser.js"));
+  const parsed = parseWowheadGearPlanner(
+    "https://www.wowhead.com/cata/gear-planner/rogue/night-elf/ELBg1GyHzAT4TB47I4jxChgO001qf711xrn21qf031qfk41qfc52s5361rnp71rng81rnhRNB4GQf4IiK4IgU4GQ24PPWgAC4KEih-gBD4Fizhw4PPbgBF4FjKiF4J3qgFG4Fi-h-4Eev4FLIgBH4FjLhw4K07gBI4FiyiF4J3sgFJ4Fiqh44EdS4PPpgFK4Firhw4EdS4J3vgAL4KEbhwgAM4KEbhwAN4ESRAO4FhYgCP4KEkhw4KGK4FK6BQ4Hpr4J3mBR4Fgm4OjoAS4FhE",
+  );
+  const bySlot = new Map(parsed.items.map((item) => [item.slotName, item]));
+  assert.deepEqual(Array.from(bySlot.get("Chest").enchantIds), [74250]);
+  assert.deepEqual(Array.from(bySlot.get("Back").enchantIds), [75178, 55002]);
+  assert.deepEqual(Array.from(bySlot.get("Off hand").enchantIds), [93448]);
+
+  const context = { globalThis: null };
+  context.globalThis = context;
+  vm.runInNewContext(readFileSync(resolve(projectRoot, "item-db.js"), "utf8"), context);
+  assert.equal(context.ENCHANT_DB[74250].c, 74249);
+  assert.equal(context.ENCHANT_DB[75178].c, 75177);
+  assert.equal(context.ENCHANT_DB[93448].c, 43588);
+});
+
+test("equipment bonuses include every imported enchant on a slot", () => {
+  const bonuses = modules.optimizer.equipmentBonuses(
+    item("Back", {}, { enchantIds: [1, 2] }),
+    {
+      itemDb: {},
+      gemDb: {},
+      enchantDb: {
+        1: { m: 0, s: [0, 0, 0, 0, 10, 0, 0, 0] },
+        2: { m: 0, s: [0, 0, 0, 0, 0, 20, 0, 0] },
+      },
+    },
+  );
+  assert.equal(bonuses.Crit, 10);
+  assert.equal(bonuses.Haste, 20);
+});
+
+test("Wowhead enchant mappings are explicit and cover Death Knight runeforges", () => {
+  const context = { globalThis: null };
+  context.globalThis = context;
+  vm.runInNewContext(
+    readFileSync(resolve(projectRoot, "item-db.js"), "utf8"),
+    context,
+    { filename: "item-db.js" },
+  );
+  const expected = new Map([
+    [53387, 53323],
+    [56903, 53331],
+    [53362, 53342],
+    [53365, 53344],
+    [53386, 53341],
+    [50401, 53343],
+    [54448, 54446],
+    [54449, 54447],
+    [62157, 62158],
+    [70163, 70164],
+  ]);
+  for (const [canonicalId, plannerId] of expected) {
+    assert.equal(context.ENCHANT_DB[canonicalId].p, plannerId);
+    assert.equal(context.ENCHANT_DB[plannerId].c, canonicalId);
+    assert.equal(context.ENCHANT_DB[plannerId].a, 1);
+  }
+  const builder = readFileSync(
+    new URL("../tools/build-item-db.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(builder, /Number\(appliedId\) \+ 1/);
+  assert.match(builder, /const wowheadPlannerEnchantIds = new Map/);
+});
+
+test("Wowhead result actions live below Final Stats and merge prefills Planner A", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.doesNotMatch(html, /id="gearCard"[\s\S]*?<div class="toolbar">[\s\S]*?id="mergeWowhead"/);
+  assert.match(html, /<h3 class="section-title">Final Stats<\/h3>[\s\S]*?id="openBaseWowhead"[\s\S]*?id="mergeBaseWowhead"/);
+  assert.match(script, /class="secondary combo-wowhead-merge"/);
+  assert.match(script, /function openMergeWowheadWithPlannerA\(url = ""\)/);
+  assert.match(script, /\$\("#mergeWowheadA"\)\.value = url/);
+  assert.match(script, /openMergeWowheadWithPlannerA\(wowheadProfileUrl\(state\.items, lastResult\)\)/);
+  assert.match(script, /openMergeWowheadWithPlannerA\(wowheadProfileUrl\(gear, record\.result\)\)/);
 });

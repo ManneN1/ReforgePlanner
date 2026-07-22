@@ -109,14 +109,38 @@
   }
 
   function merge(left, right, selections = {}) {
-    const talentSource = selections.talents === "right" ? right : left;
-    const result = { ...left, classSlug: talentSource.classSlug, raceSlug: talentSource.raceSlug, dataEnv: talentSource.dataEnv, gender: talentSource.gender, level: talentSource.level, talentTrees: structuredClone(talentSource.talentTrees || []), glyphHash: talentSource.glyphHash || "", items: structuredClone(left.items || []) };
-    const rightBySlot = new Map((right.items || []).map((item) => [item.slotId, item]));
+    const sourceFor = (selection) => selection === "right" ? right : left;
+    const talentSource = sourceFor(selections.talents);
+    const gearSource = sourceFor(selections.gear);
+    const profilesByField = {
+      reforgeId: sourceFor(selections.reforges),
+      gemIds: sourceFor(selections.gems),
+      enchantIds: sourceFor(selections.enchants),
+    };
+    const itemsByFieldAndSlot = Object.fromEntries(
+      Object.entries(profilesByField).map(([field, profile]) => [
+        field,
+        new Map((profile.items || []).map((item) => [item.slotId, item])),
+      ]),
+    );
+    const result = {
+      ...gearSource,
+      classSlug: talentSource.classSlug,
+      raceSlug: talentSource.raceSlug,
+      dataEnv: talentSource.dataEnv,
+      gender: talentSource.gender,
+      level: talentSource.level,
+      talentTrees: structuredClone(talentSource.talentTrees || []),
+      glyphHash: talentSource.glyphHash || "",
+      items: structuredClone(gearSource.items || []),
+    };
     result.items = result.items.map((item) => {
-      const merged = { ...item }, counterpart = rightBySlot.get(item.slotId);
+      const merged = { ...item };
       for (const field of ["reforgeId", "gemIds", "enchantIds"]) {
-        const key = field === "reforgeId" ? "reforges" : field === "gemIds" ? "gems" : "enchants";
-        if (selections[key] === "right") merged[field] = counterpart ? structuredClone(counterpart[field] || (field === "reforgeId" ? undefined : [])) : (field === "reforgeId" ? undefined : []);
+        const counterpart = itemsByFieldAndSlot[field].get(item.slotId);
+        merged[field] = counterpart
+          ? structuredClone(counterpart[field] ?? (field === "reforgeId" ? undefined : []))
+          : (field === "reforgeId" ? undefined : []);
       }
       return merged;
     });

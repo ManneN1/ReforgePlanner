@@ -86,7 +86,6 @@
                 </div>
               </div>
               <div class="toolbar">
-                <button type="button" class="secondary" id="mergeWowhead">Merge Wowhead Planners</button>
                 <button type="button" class="secondary" id="openWowhead">Import Wowhead Planner</button>
               </div>
             </div>
@@ -112,10 +111,6 @@
                   <button type="button" class="secondary" id="toggleResults" aria-controls="resultsBody" aria-expanded="true">
                     Minimize ▴
                   </button>
-                  <div class="base-result-export-actions">
-                    <div class="generated-wowhead-link" id="baseWowheadLink" hidden></div>
-                    <button type="button" class="secondary" id="openBaseWowhead">Generate WowHead Gear Planner Link</button>
-                  </div>
                 </div>
               </div>
               <div class="card-body" id="resultsBody">
@@ -135,6 +130,11 @@
                         </thead>
                         <tbody id="statDelta"></tbody>
                       </table>
+                    </div>
+                    <div class="result-export-actions">
+                      <button type="button" class="secondary" id="openBaseWowhead">Generate WowHead Gear Planner Link</button>
+                      <div class="generated-wowhead-link" id="baseWowheadLink" hidden></div>
+                      <button type="button" class="secondary" id="mergeBaseWowhead">Merge Wowhead Planners</button>
                     </div>
                   </section>
                   <section>
@@ -390,7 +390,7 @@
         <div class="card-head">
           <div>
             <h2 id="mergeWowheadTitle">Merge Wowhead Gear Planners</h2>
-            <div class="small">Items and variants come from Planner A. Choose which planner supplies talents and glyphs, reforges, gems, and enchants.</div>
+            <div class="small">Choose which planner supplies talents and glyphs, gear and variants, reforges, gems, and enchants.</div>
           </div>
           <button type="button" class="icon-btn" id="closeMergeWowhead" aria-label="Close Wowhead planner merge dialog">×</button>
         </div>
@@ -402,6 +402,7 @@
           <div class="merge-source-grid" aria-label="Planner source choices">
             <div><strong>Category</strong><strong>Planner A</strong><strong>Planner B</strong></div>
             <div><span>Talents, glyphs, and class</span><label><input type="radio" name="merge-talents" value="left" checked> A</label><label><input type="radio" name="merge-talents" value="right"> B</label></div>
+            <div><span>Gear and variants</span><label><input type="radio" name="merge-gear" value="left" checked> A</label><label><input type="radio" name="merge-gear" value="right"> B</label></div>
             <div><span>Reforges</span><label><input type="radio" name="merge-reforges" value="left" checked> A</label><label><input type="radio" name="merge-reforges" value="right"> B</label></div>
             <div><span>Gems</span><label><input type="radio" name="merge-gems" value="left" checked> A</label><label><input type="radio" name="merge-gems" value="right"> B</label></div>
             <div><span>Enchants</span><label><input type="radio" name="merge-enchants" value="left" checked> A</label><label><input type="radio" name="merge-enchants" value="right"> B</label></div>

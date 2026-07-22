@@ -11,9 +11,9 @@
     };
     const records = [
       ...(item.gemIds || []).map((id) => gemDb[String(id)]),
-      item.slot !== "Neck" && item.enchantIds?.[0]
-        ? enchantDb[String(item.enchantIds[0])]
-        : null,
+      ...(item.slot !== "Neck"
+        ? (item.enchantIds || []).map((id) => enchantDb[String(id)])
+        : []),
     ].filter(Boolean);
     for (const record of records) {
       result[MAIN_STAT] += number(record.m);
