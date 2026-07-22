@@ -87,7 +87,6 @@
       comboRules: [],
       comboCount: 1,
       comboMethod: "exactly",
-      wowheadProfile: null,
     };
   }
 

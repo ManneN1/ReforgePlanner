@@ -128,7 +128,12 @@
       .hero-actions {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
         gap: 10px;
+      }
+      .hero-action-status {
+        min-height: 1.2em;
+        text-align: right;
       }
       .grid {
         display: grid;
@@ -903,6 +908,11 @@
         .hero-actions {
           width: 100%;
           flex-wrap: wrap;
+          justify-content: flex-start;
+        }
+        .hero-action-status {
+          flex-basis: 100%;
+          text-align: left;
         }
         .summary {
           grid-template-columns: repeat(2, 1fr);
@@ -1181,14 +1191,25 @@
   margin-right: 2px;
 }
 
+.base-result-export-actions,
 .result-export-actions {
-  align-items: flex-end;
-  flex-direction: column;
-  gap: 0.45rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
 }
+
+.result-export-actions {
+  margin-top: 0.75rem;
+  justify-content: flex-start;
+}
+
 .generated-wowhead-link {
   font-size: 0.82rem;
   overflow-wrap: anywhere;
+}
+
+.base-result-export-actions .generated-wowhead-link {
+  text-align: right;
 }
 .generated-wowhead-link a {
   color: var(--accent);

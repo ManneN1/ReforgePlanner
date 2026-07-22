@@ -91,6 +91,12 @@
   }
 
 
+
+  function setupPayload(state) {
+    const { wowheadProfile: _legacyWowheadProfile, ...payload } = state || {};
+    return payload;
+  }
+
   const COMPACT_SETUP_PREFIX = "RFP1:";
 
   function bytesToBase64Url(bytes) {
@@ -114,7 +120,7 @@
   async function serializeCompactSetup(state) {
     if (typeof CompressionStream !== "function")
       throw new Error("Compact exports are not supported by this browser.");
-    const payload = JSON.stringify({ format: "ReforgePlanner", version: 1, ...state });
+    const payload = JSON.stringify({ format: "ReforgePlanner", version: 1, ...setupPayload(state) });
     const compressed = new Blob([new TextEncoder().encode(payload)])
       .stream()
       .pipeThrough(new CompressionStream("gzip"));
@@ -147,7 +153,7 @@
 
   function serializeSetup(state) {
     return JSON.stringify(
-      { format: "ReforgePlanner", version: 1, ...state },
+      { format: "ReforgePlanner", version: 1, ...setupPayload(state) },
       null,
       2,
     );

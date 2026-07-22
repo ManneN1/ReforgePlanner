@@ -19,6 +19,7 @@
           </div>
         </div>
         <div class="hero-actions">
+          <span class="status hero-action-status" id="setupStatus" role="status" aria-live="polite" aria-atomic="true"></span>
           <button type="button" class="secondary" id="openImport">
             Import
           </button>
@@ -111,13 +112,14 @@
                   <button type="button" class="secondary" id="toggleResults" aria-controls="resultsBody" aria-expanded="true">
                     Minimize ▴
                   </button>
-                  <button type="button" class="secondary" id="openBaseWowhead">Generate WowHead Gear Planner Link</button>
-                  <button type="button" class="secondary" id="copyResults">Copy Results</button>
+                  <div class="base-result-export-actions">
+                    <div class="generated-wowhead-link" id="baseWowheadLink" hidden></div>
+                    <button type="button" class="secondary" id="openBaseWowhead">Generate WowHead Gear Planner Link</button>
+                  </div>
                 </div>
               </div>
               <div class="card-body" id="resultsBody">
                 <div class="summary" id="summary"></div>
-                <div class="generated-wowhead-link" id="baseWowheadLink" hidden></div>
                 <div class="result-detail-grid">
                   <section>
                     <h3 class="section-title">Final Stats</h3>

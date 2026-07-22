@@ -477,12 +477,18 @@ test("item repository keeps local and online lookup behind one interface", async
 });
 
 test("setup and gear persistence round-trip through their public APIs", () => {
-  const state = baseState({ comboCount: 3, comboMethod: "atleast" }),
+  const state = baseState({
+      comboCount: 3,
+      comboMethod: "atleast",
+      wowheadProfile: { classSlug: "warrior", glyphHash: "temporary" },
+    }),
     serialized = modules.persistence.serializeSetup(state),
     restored = modules.persistence.parseSetup(serialized);
   assert.equal(restored.format, "ReforgePlanner");
   assert.equal(restored.comboCount, 3);
   assert.equal(restored.comboMethod, "atleast");
+  assert.equal(restored.wowheadProfile, undefined);
+  assert.doesNotMatch(serialized, /wowheadProfile|glyphHash|temporary/);
 
   const original = item("Head", { Crit: 17 }, {
     id: "42",
@@ -829,6 +835,7 @@ test("item editor columns and generated WowHead links stay compact and inline", 
   assert.match(script, /renderGeneratedWowheadLink/);
   assert.match(html, /Generate WowHead Gear Planner Link/);
   assert.match(html, /ReforgePlanner GitHub/);
+  assert.doesNotMatch(html, /Copy Results|id="copyResults"/);
   assert.match(styles, /item-editor-table td:nth-child\(3\)[\s\S]*min-width: 280px/);
 });
 
@@ -858,6 +865,7 @@ test("compact setup exports round-trip and are smaller than formatted JSON", asy
   assert.equal(restored.format, "ReforgePlanner");
   assert.equal(restored.items[0].name, setup.items[0].name);
   assert.equal(restored.candidates.length, setup.candidates.length);
+  assert.equal(restored.wowheadProfile, undefined);
 });
 
 test("setup dialogs expose JSON and compact formats", () => {
@@ -866,4 +874,11 @@ test("setup dialogs expose JSON and compact formats", () => {
   assert.match(html, /value="compact">Compact string</);
   assert.match(html, /id="openImport">\s*Import\s*</);
   assert.match(html, /id="exportJson">\s*Export\s*</);
+});
+
+test("import and export feedback is shown beside the header actions", () => {
+  assert.match(html, /id="setupStatus"[^>]*role="status"/);
+  assert.match(script, /setSetupStatus\(`\$\{setupFormatName\(\)\} import complete\.`/);
+  assert.match(script, /setSetupStatus\(`\$\{setupFormatName\(\)\} copied\.`/);
+  assert.doesNotMatch(script, /\$\("#status"\)\.textContent = `\$\{setupFormatName\(\)\} import complete\.`/);
 });

@@ -124,6 +124,7 @@
         currentSetupSaveTimer = setTimeout(persistCurrentSetup, 150);
       };
       let state = defaults(),
+        importedWowheadProfile = null,
         currentSetupSaveTimer = null,
         lastResult = null,
         comboStopRequested = false,
@@ -238,7 +239,7 @@
       }
 
       function wowheadProfileBase() {
-        const profile = state.wowheadProfile || {};
+        const profile = importedWowheadProfile || {};
         return {
           version: 4,
           classSlug: profile.classSlug || "warrior",
@@ -1594,7 +1595,6 @@
           comboRules: x.comboRules || [],
           comboCount: Math.max(0, Math.floor(n(x.comboCount ?? 1))),
           comboMethod: x.comboMethod || "exactly",
-          wowheadProfile: x.wowheadProfile || null,
         };
         enforceWeaponRules();
         renderWeights();
@@ -1680,7 +1680,7 @@
               : "Base set (no candidates)";
             const originalRank = defaultRank.get(record),
               detailId = `combo-detail-${originalRank}`;
-            return `<tr class="combo-main-row" tabindex="0" role="button" aria-expanded="false" aria-controls="${detailId}" aria-label="Toggle details for original result ${originalRank}" data-detail-id="${detailId}"><td>${originalRank}</td><td>${equippedCandidates}</td><td class="${result.allCapsMet ? "cap-ok" : "cap-bad"}">${esc(capSummary(result.capResults))}</td>${TOTAL_STATS.map((stat) => `<td>${result.totals[stat]}</td>`).join("")}</tr><tr class="combo-detail-row" id="${detailId}" hidden><td colspan="${TOTAL_STATS.length + 3}"><div class="summary">${resultSummaryHtml(result)}</div><div class="result-export-actions"><button type="button" class="secondary combo-wowhead-export" data-record-index="${index}">Generate WowHead Gear Planner Link</button><div class="generated-wowhead-link" data-wowhead-link-index="${index}" hidden></div></div><div class="result-detail-grid"><section><h3 class="section-title">Final Stats</h3><div class="final-stats"><table aria-label="Final stats for original result ${originalRank}"><thead><tr><th scope="col">Stat</th><th scope="col">Before</th><th scope="col">Change</th><th scope="col">Final</th></tr></thead><tbody>${statRows}</tbody></table></div></section><section><h3 class="section-title">Per-Item Reforges</h3><div class="result-table-wrap"><table class="result-table" aria-label="Per-item reforges for original result ${originalRank}"><thead><tr><th scope="col">Item</th><th scope="col">Recommendation</th><th scope="col">Amount</th></tr></thead><tbody>${reforgeRows}</tbody></table></div></section></div></td></tr>`;
+            return `<tr class="combo-main-row" tabindex="0" role="button" aria-expanded="false" aria-controls="${detailId}" aria-label="Toggle details for original result ${originalRank}" data-detail-id="${detailId}"><td>${originalRank}</td><td>${equippedCandidates}</td><td class="${result.allCapsMet ? "cap-ok" : "cap-bad"}">${esc(capSummary(result.capResults))}</td>${TOTAL_STATS.map((stat) => `<td>${result.totals[stat]}</td>`).join("")}</tr><tr class="combo-detail-row" id="${detailId}" hidden><td colspan="${TOTAL_STATS.length + 3}"><div class="summary">${resultSummaryHtml(result)}</div><div class="result-detail-grid"><section><h3 class="section-title">Final Stats</h3><div class="final-stats"><table aria-label="Final stats for original result ${originalRank}"><thead><tr><th scope="col">Stat</th><th scope="col">Before</th><th scope="col">Change</th><th scope="col">Final</th></tr></thead><tbody>${statRows}</tbody></table></div><div class="result-export-actions"><button type="button" class="secondary combo-wowhead-export" data-record-index="${index}">Generate WowHead Gear Planner Link</button><div class="generated-wowhead-link" data-wowhead-link-index="${index}" hidden></div></div></section><section><h3 class="section-title">Per-Item Reforges</h3><div class="result-table-wrap"><table class="result-table" aria-label="Per-item reforges for original result ${originalRank}"><thead><tr><th scope="col">Item</th><th scope="col">Recommendation</th><th scope="col">Amount</th></tr></thead><tbody>${reforgeRows}</tbody></table></div></section></div></td></tr>`;
           })
           .join("");
         document.querySelectorAll(".combo-sort").forEach((button) => {
@@ -1879,6 +1879,11 @@
         copyDataButton = $("#copyData"),
         importDataButton = $("#importData");
       let setupDialogMode = "import";
+      const setupStatus = $("#setupStatus");
+      function setSetupStatus(message, kind = "") {
+        setupStatus.textContent = message;
+        setupStatus.className = `status hero-action-status${kind ? ` ${kind}` : ""}`;
+      }
 
       const setupFormatName = () =>
         setupFormat.value === "compact" ? "compact string" : "JSON";
@@ -1944,6 +1949,7 @@
       copyDataButton.onclick = async () => {
         try {
           await navigator.clipboard.writeText(dataBox.value);
+          setSetupStatus(`${setupFormatName()} copied.`, "good");
         } catch (error) {
           alert("Copy failed: " + error.message);
         }
@@ -1957,8 +1963,7 @@
               : parseSetup(input);
           restoreSetupJson(setup);
           setupDialog.close();
-          $("#status").textContent = `${setupFormatName()} import complete.`;
-          $("#status").className = "status good";
+          setSetupStatus(`${setupFormatName()} import complete.`, "good");
         } catch (e) {
           alert("Import failed: " + e.message);
         }
@@ -2014,7 +2019,7 @@
             }),
           );
           state.items = items;
-          state.wowheadProfile = {
+          importedWowheadProfile = {
             version: parsed.version,
             classSlug: parsed.classSlug,
             raceSlug: parsed.raceSlug,
@@ -2074,16 +2079,6 @@
           $("#baseWowheadLink"),
           wowheadProfileUrl(state.items, lastResult),
         );
-      };
-      $("#copyResults").onclick = () => {
-        if (!lastResult) return;
-        const t = lastResult.items
-          .map((i, k) => {
-            const o = lastResult.picked[k];
-            return `${i.name}: ${o.src ? `${o.src} -> ${o.dst} (${o.amount})` : "No reforge"}`;
-          })
-          .join("\n");
-        navigator.clipboard.writeText(t);
       };
       $("#toggleResults").onclick = () => {
         const body = $("#resultsBody"),
