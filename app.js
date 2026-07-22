@@ -72,6 +72,7 @@
         );
       const combinationEngine = ReforgePlanner.combinations;
       const candidateIsUsable = combinationEngine.candidateIsUsable;
+      const baseItemIsUsable = combinationEngine.baseItemIsUsable;
       const countCandidateRange = (
         items,
         count,
@@ -1027,6 +1028,20 @@
           candidate.candidateKey ||= createCandidateKey();
         });
         const candidateKeys = new Set(state.candidates.map((candidate) => candidate.candidateKey)),
+          baseItemOptions = state.items
+            .filter(baseItemIsUsable)
+            .map((item) => ({
+              ref: `base:${item.slot}`,
+              label: `Base — ${item.slot}: ${item.name || item.slot}`,
+            })),
+          candidateItemOptions = state.candidates
+            .filter(candidateIsUsable)
+            .map((candidate, candidateIndex) => ({
+              ref: `candidate:${candidate.candidateKey}`,
+              label: `Candidate — ${candidate.slot}: ${candidate.name?.trim() && candidate.name !== "Candidate item" ? candidate.name.trim() : `Candidate ${candidateIndex + 1}`}`,
+            })),
+          itemOptions = [...baseItemOptions, ...candidateItemOptions],
+          availableItemRefs = new Set(itemOptions.map((option) => option.ref)),
           box = $("#comboRules");
         box.innerHTML = "";
         state.comboRules.forEach((rule, index) => {
@@ -1035,7 +1050,100 @@
             error = el("div", { className: "rule-error" });
           let validateRule;
 
-          if (rule.type === "candidateSet") {
+          if (rule.type === "itemCount") {
+            rule.method = ["atleast", "atmost", "exactly"].includes(rule.method)
+              ? rule.method
+              : "atleast";
+            rule.value = Math.max(0, Math.floor(n(rule.value)));
+            rule.itemRefs = [...new Set(rule.itemRefs || [])].filter((ref) =>
+              availableItemRefs.has(ref),
+            );
+            const method = el("select", { title: "Item count comparison" }),
+              value = el("input", {
+                type: "number",
+                min: 0,
+                value: rule.value,
+                title: "Required item count",
+              }),
+              items = el("details", { className: "rule-slots item-count-picker" }),
+              summary = el("summary", { className: "secondary" }),
+              options = el("div", { className: "rule-slot-options item-count-options" });
+            [
+              ["atleast", "At least"],
+              ["atmost", "At most"],
+              ["exactly", "Exactly"],
+            ].forEach(([methodValue, label]) =>
+              method.append(el("option", { value: methodValue, selected: methodValue === rule.method }, label)),
+            );
+            configureIntegerField(value, "Item count");
+            const updateSummary = () => {
+              summary.textContent = rule.itemRefs.length
+                ? `${rule.itemRefs.length} item${rule.itemRefs.length === 1 ? "" : "s"} selected ▾`
+                : "Select base and candidate items ▾";
+            };
+            itemOptions.forEach((option) => {
+              const checkbox = el("input", {
+                  type: "checkbox",
+                  checked: rule.itemRefs.includes(option.ref),
+                }),
+                label = el("label"),
+                text = el("span");
+              text.textContent = option.label;
+              checkbox.onchange = () => {
+                rule.itemRefs = checkbox.checked
+                  ? [...new Set([...rule.itemRefs, option.ref])]
+                  : rule.itemRefs.filter((ref) => ref !== option.ref);
+                updateSummary();
+                validateRule();
+                updateComboEstimate();
+              };
+              label.append(checkbox, text);
+              options.append(label);
+            });
+            items.append(summary, options);
+            validateRule = () => {
+              let message = "";
+              value.setCustomValidity("");
+              if (!rule.itemRefs.length) message = "Select at least one base or candidate item.";
+              else if (!value.checkValidity()) message = value.validationMessage;
+              else if (
+                rule.method !== "atmost" &&
+                rule.value > rule.itemRefs.length
+              ) message = `The required count cannot exceed the ${rule.itemRefs.length} selected items.`;
+              if (!message) {
+                const selectedCandidateKeys = new Set(
+                  rule.itemRefs
+                    .filter((ref) => ref.startsWith("candidate:"))
+                    .map((ref) => ref.slice("candidate:".length)),
+                );
+                const partialSetIndex = state.comboRules.findIndex((setRule) => {
+                  if (setRule.type !== "candidateSet") return false;
+                  const keys = [...new Set(setRule.candidateKeys || [])].filter((key) => candidateKeys.has(key));
+                  if (keys.length < 2) return false;
+                  const overlap = keys.filter((key) => selectedCandidateKeys.has(key)).length;
+                  return overlap > 0 && overlap < keys.length;
+                });
+                if (partialSetIndex >= 0)
+                  message = `Select either all or none of the candidates from Candidate Set ${partialSetIndex + 1}.`;
+              }
+              row.classList.toggle("invalid", Boolean(message));
+              items.classList.toggle("invalid", Boolean(message));
+              error.textContent = message;
+              return !message;
+            };
+            method.onchange = () => {
+              rule.method = method.value;
+              validateRule();
+              updateComboEstimate();
+            };
+            value.oninput = () => {
+              rule.value = Math.max(0, Math.floor(n(value.value)));
+              validateRule();
+              updateComboEstimate();
+            };
+            row.append(method, value, el("span", {}, "from"), items);
+            updateSummary();
+          } else if (rule.type === "candidateSet") {
             rule.candidateKeys = [...new Set(rule.candidateKeys || [])].filter((key) =>
               candidateKeys.has(key),
             );
@@ -1515,6 +1623,16 @@
       $("#addCandidateSetRule").onclick = () => {
         state.comboRules ??= [];
         state.comboRules.push({ type: "candidateSet", candidateKeys: [] });
+        renderComboRules();
+      };
+      $("#addItemCountRule").onclick = () => {
+        state.comboRules ??= [];
+        state.comboRules.push({
+          type: "itemCount",
+          method: "atleast",
+          value: 1,
+          itemRefs: [],
+        });
         renderComboRules();
       };
       $("#comboCount").oninput = () => updateComboEstimate();

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Reforge Planner</title>
+    <title>ReforgePlanner</title>
     <meta name="description" content="Optimize Cataclysm reforging, stat breakpoints, and candidate gear combinations." />
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
@@ -15,7 +15,7 @@
           <div class="eyebrow">Cataclysm gear optimizer</div>
           <div class="brand-title">
             <img class="brand-mark" src="assets/reforge-mark.svg" alt="" aria-hidden="true" />
-            <h1>Reforge Planner</h1>
+            <h1>ReforgePlanner</h1>
           </div>
         </div>
         <div class="hero-actions">
@@ -169,12 +169,13 @@
             <div>
               <h3>Combination Rules</h3>
               <div class="small">
-                Limit candidate slots or require selected candidates to be equipped together.
+                Limit candidate slots, group candidates into sets, or require a count from selected base and candidate items.
               </div>
             </div>
             <div class="candidate-rule-actions">
               <button type="button" class="secondary" id="addComboRule">+ Slot Limit</button>
               <button type="button" class="secondary" id="addCandidateSetRule">+ Candidate Set</button>
+              <button type="button" class="secondary" id="addItemCountRule">+ Item Count</button>
             </div>
           </div>
           <div id="comboRules"></div>
@@ -319,17 +320,17 @@
           <div>
             <h2 id="setupDialogTitle">Import JSON</h2>
             <div class="small" id="setupDialogDescription">
-              Paste a Reforge Planner setup JSON export to restore the whole setup.
+              Paste a ReforgePlanner setup JSON export to restore the whole setup.
             </div>
           </div>
           <button type="button" class="icon-btn" id="closeModal" aria-label="Close setup import and export dialog">×</button>
         </div>
         <div class="card-body">
-          <label class="visually-hidden" for="dataBox">Reforge Planner setup JSON</label>
+          <label class="visually-hidden" for="dataBox">ReforgePlanner setup JSON</label>
           <textarea
             id="dataBox"
             spellcheck="false"
-            placeholder="Paste exported Reforge Planner JSON…"
+            placeholder="Paste exported ReforgePlanner JSON…"
           ></textarea>
           <div class="dialog-actions">
             <button type="button" class="secondary" id="copyData" hidden>Copy JSON</button

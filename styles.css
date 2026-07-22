@@ -1097,3 +1097,11 @@
 .candidate-rule.candidateSet > span:not(.rule-error) {
   min-height: 39px;
 }
+
+.candidate-rule.itemCount .item-count-picker summary {
+  min-width: 260px;
+}
+.candidate-rule.itemCount .item-count-options {
+  grid-template-columns: minmax(280px, 1fr);
+  width: min(430px, calc(100vw - 72px));
+}

@@ -243,6 +243,56 @@ test("candidate set rules require all selected set members or none", () => {
   assert.deepEqual(Array.from(pairs[0], (entry) => entry.candidateKey), ["weapon", "shield"]);
 });
 
+test("item count rules support at least, at most, and exactly across base and candidate items", () => {
+  const baseHead = item("Head");
+  const shoulder = item("Shoulder", {}, { candidateKey: "shoulder" });
+  const chest = item("Chest", {}, { candidateKey: "chest" });
+  const refs = ["base:Head", "candidate:shoulder", "candidate:chest"];
+  const expected = new Map([
+    ["atleast", 2n],
+    ["exactly", 2n],
+    ["atmost", 0n],
+  ]);
+  for (const [method, total] of expected) {
+    const state = baseState({
+      items: [baseHead],
+      comboRules: [{ type: "itemCount", method, value: method === "atmost" ? 1 : 2, itemRefs: refs }],
+    });
+    const runtime = createRuntime(state);
+    assert.equal(runtime.countCandidateRange([shoulder, chest], 1, "exactly"), total);
+    assert.equal(
+      BigInt([...runtime.iterateCandidateRange([shoulder, chest], 1, "exactly")].length),
+      total,
+    );
+  }
+});
+
+test("item count rules count the final equipped setup after replacements", () => {
+  const baseHead = item("Head");
+  const candidateHead = item("Head", {}, { candidateKey: "new-head" });
+  const state = baseState({
+    items: [baseHead],
+    comboRules: [{
+      type: "itemCount",
+      method: "exactly",
+      value: 1,
+      itemRefs: ["base:Head", "candidate:new-head"],
+    }],
+  });
+  const runtime = createRuntime(state);
+  assert.equal(runtime.countCandidateRange([candidateHead], 1, "exactly"), 1n);
+  assert.equal([...runtime.iterateCandidateRange([candidateHead], 1, "exactly")].length, 1);
+});
+
+test("item count rule UI blocks partial Candidate Set selections", () => {
+  assert.match(html, /id="addItemCountRule">\+ Item Count/);
+  assert.match(script, /type: "itemCount"/);
+  assert.match(script, /Select either all or none of the candidates from Candidate Set/);
+  assert.match(script, /\["atleast", "At least"\]/);
+  assert.match(script, /\["atmost", "At most"\]/);
+  assert.match(script, /\["exactly", "Exactly"\]/);
+});
+
 test("Cogwheel gems and sockets use their own database color", () => {
   assert.match(script, /\[9, "Cogwheel"\]/);
   assert.match(styles, /\.socket-border-cogwheel \{ --socket-border: #9bd7d5; \}/);
