@@ -19,7 +19,7 @@
   function comboMatchesRules(combo, rules = []) {
     return rules.every((rule) => {
       const type = rule.type || "slotLimit";
-      if (type === "itemCount") return true;
+      if (type === "itemCount" || type === "mutualExclusion") return true;
       if (type === "candidateSet") {
         const keys = [...new Set(rule.candidateKeys || [])];
         if (keys.length < 2) return true;
@@ -104,6 +104,67 @@
       );
   }
 
+  function candidateSetDefinitions(rules = []) {
+    return new Map(
+      rules
+        .filter((rule) => rule.type === "candidateSet" && rule.setKey)
+        .map((rule) => [
+          rule.setKey,
+          [...new Set(rule.candidateKeys || [])],
+        ])
+        .filter(([, keys]) => keys.length >= 2),
+    );
+  }
+
+  function comboEntityReferencePresent(
+    combo,
+    ref,
+    rules = [],
+    baseItems = [],
+    itemDb = {},
+    fingerSlots = combo.fingerSlots || [],
+  ) {
+    if (!ref) return false;
+    if (ref.startsWith("candidate:")) {
+      const key = ref.slice("candidate:".length);
+      return combo.some((item) => item.candidateKey === key);
+    }
+    if (ref.startsWith("set:")) {
+      const setKey = ref.slice("set:".length),
+        keys = candidateSetDefinitions(rules).get(setKey) || [];
+      return keys.length >= 2 && keys.every((key) =>
+        combo.some((item) => item.candidateKey === key),
+      );
+    }
+    if (!ref.startsWith("base:")) return false;
+    const slot = ref.slice("base:".length),
+      item = baseItems.find((entry) => entry.slot === slot);
+    if (!baseItemIsUsable(item)) return false;
+    if (fingerSlots.includes(slot)) return false;
+    if (combo.some((candidate) => candidate.slot === slot)) return false;
+    const candidateMain = combo.find((candidate) => candidate.slot === "Main hand");
+    return !(
+      slot === "Off hand" &&
+      candidateMain &&
+      isTwoHanded(candidateMain, itemDb)
+    );
+  }
+
+  function comboMatchesMutualExclusionRules(
+    combo,
+    rules = [],
+    baseItems = [],
+    itemDb = {},
+    fingerSlots = combo.fingerSlots || [],
+  ) {
+    return rules
+      .filter((rule) => rule.type === "mutualExclusion")
+      .every((rule) => !(
+        comboEntityReferencePresent(combo, rule.leftRef, rules, baseItems, itemDb, fingerSlots) &&
+        comboEntityReferencePresent(combo, rule.rightRef, rules, baseItems, itemDb, fingerSlots)
+      ));
+  }
+
   function candidateSizeRange(items, count, method) {
     const maximum = Math.min(
       items.filter(candidateIsUsable).length,
@@ -151,6 +212,21 @@
           value: Math.max(0, Math.floor(number(rule.value))),
           refs: new Set(rule.itemRefs || []),
         })),
+      setDefinitions = candidateSetDefinitions(rules),
+      mutualRules = rules
+        .filter((rule) => rule.type === "mutualExclusion" && rule.leftRef && rule.rightRef)
+        .map((rule) => [rule.leftRef, rule.rightRef]),
+      mutualEntityRefs = [...new Set(mutualRules.flat())],
+      mutualEntities = mutualEntityRefs.map((ref) => {
+        if (ref.startsWith("set:")) {
+          const keys = setDefinitions.get(ref.slice("set:".length)) || [];
+          return { ref, type: "set", keys: new Set(keys), required: keys.length };
+        }
+        if (ref.startsWith("candidate:"))
+          return { ref, type: "candidate", key: ref.slice("candidate:".length) };
+        return { ref, type: "base", slot: ref.slice("base:".length) };
+      }),
+      mutualEntityIndex = new Map(mutualEntities.map((entity, index) => [entity.ref, index])),
       baseBySlot = new Map(baseItems.map((item) => [item.slot, item])),
       initialItemCounts = itemRules.map((rule) =>
         [...rule.refs].filter((ref) => {
@@ -159,20 +235,24 @@
           return baseItemIsUsable(baseBySlot.get(slot));
         }).length,
       ),
+      initialMutualEntityCounts = mutualEntities.map((entity) =>
+        entity.type === "base" && baseItemIsUsable(baseBySlot.get(entity.slot)) ? 1 : 0,
+      ),
       baseMain = baseItems.find((item) => item.slot === "Main hand"),
       baseMainTwoHanded = isTwoHanded(baseMain, itemDb);
     let states = new Map([
-      [`0|${slotRules.map(() => 0).join(",")}|${setRules.map(() => 0).join(",")}|${initialItemCounts.join(",")}|0|0|0|`, 1n],
+      [`0|${slotRules.map(() => 0).join(",")}|${setRules.map(() => 0).join(",")}|${initialItemCounts.join(",")}|${initialMutualEntityCounts.join(",")}|0|0|0|`, 1n],
     ]);
 
     for (const item of valid) {
       const next = new Map(states);
       for (const [key, ways] of states) {
-        const [sizeText, ruleText, setText, itemRuleText, mainText, offhandText, fingerText, slotsText] = key.split("|"),
+        const [sizeText, ruleText, setText, itemRuleText, mutualEntityText, mainText, offhandText, fingerText, slotsText] = key.split("|"),
           size = Number(sizeText),
           ruleCounts = ruleText ? ruleText.split(",").map(Number) : [],
           setCounts = setText ? setText.split(",").map(Number) : [],
           itemCounts = itemRuleText ? itemRuleText.split(",").map(Number) : [],
+          mutualEntityCounts = mutualEntityText ? mutualEntityText.split(",").map(Number) : [],
           mainType = Number(mainText),
           offhand = Number(offhandText),
           fingerCount = Number(fingerText),
@@ -202,9 +282,26 @@
           ) nextValue--;
           return nextValue;
         });
+        const updatedMutualEntities = mutualEntityCounts.map((value, index) => {
+          const entity = mutualEntities[index];
+          if (entity.type === "candidate")
+            return value + (entity.key === item.candidateKey ? 1 : 0);
+          if (entity.type === "set")
+            return value + (entity.keys.has(item.candidateKey) ? 1 : 0);
+          let nextValue = value;
+          if (!isFinger && entity.slot === item.slot && baseItemIsUsable(baseBySlot.get(item.slot)))
+            nextValue--;
+          if (
+            entity.slot === "Off hand" &&
+            item.slot === "Main hand" &&
+            isTwoHanded(item, itemDb) &&
+            baseItemIsUsable(baseBySlot.get("Off hand"))
+          ) nextValue--;
+          return nextValue;
+        });
         const updatedSlots = new Set(usedSlots);
         if (!isFinger) updatedSlots.add(item.slot);
-        const nextKey = `${size + 1}|${updatedRules.join(",")}|${updatedSets.join(",")}|${updatedItems.join(",")}|${itemMainType}|${itemOffhand}|${fingerCount + (isFinger ? 1 : 0)}|${[...updatedSlots].sort().join(",")}`;
+        const nextKey = `${size + 1}|${updatedRules.join(",")}|${updatedSets.join(",")}|${updatedItems.join(",")}|${updatedMutualEntities.join(",")}|${itemMainType}|${itemOffhand}|${fingerCount + (isFinger ? 1 : 0)}|${[...updatedSlots].sort().join(",")}`;
         next.set(nextKey, (next.get(nextKey) || 0n) + ways);
       }
       states = next;
@@ -213,10 +310,11 @@
     const { first, last } = candidateSizeRange(valid, count, method);
     let total = 0n;
     for (const [key, ways] of states) {
-      const [sizeText, , setText, itemRuleText, mainText, offhandText, fingerText] = key.split("|"),
+      const [sizeText, , setText, itemRuleText, mutualEntityText, mainText, offhandText, fingerText] = key.split("|"),
         size = Number(sizeText),
         setCounts = setText ? setText.split(",").map(Number) : [],
         itemCounts = itemRuleText ? itemRuleText.split(",").map(Number) : [],
+        mutualEntityCounts = mutualEntityText ? mutualEntityText.split(",").map(Number) : [],
         mainType = Number(mainText),
         offhand = Number(offhandText),
         fingerCount = Number(fingerText);
@@ -243,6 +341,23 @@
           return value;
         });
         if (adjusted.some((value, index) => !itemCountAllows(value, itemRules[index].method, itemRules[index].value)))
+          continue;
+        const adjustedMutualEntities = mutualEntityCounts.map((value, index) => {
+          const entity = mutualEntities[index];
+          if (entity.type !== "base") return value;
+          if (replacedFinger && entity.slot === replacedFinger && baseItemIsUsable(baseBySlot.get(replacedFinger)))
+            return value - 1;
+          if (fingerCount === 2 && ["Finger 1", "Finger 2"].includes(entity.slot) && baseItemIsUsable(baseBySlot.get(entity.slot)))
+            return value - 1;
+          return value;
+        });
+        const entityPresent = (ref) => {
+          const entityIndex = mutualEntityIndex.get(ref),
+            entity = mutualEntities[entityIndex],
+            value = adjustedMutualEntities[entityIndex] || 0;
+          return entity?.type === "set" ? entity.required >= 2 && value === entity.required : value > 0;
+        };
+        if (mutualRules.some(([leftRef, rightRef]) => entityPresent(leftRef) && entityPresent(rightRef)))
           continue;
         total += ways;
       }
@@ -279,14 +394,18 @@
           for (const fingerSlot of ["Finger 1", "Finger 2"]) {
             const ringPlacement = placed.slice();
             ringPlacement.fingerSlots = [fingerSlot];
-            if (comboMatchesItemCountRules(ringPlacement, rules, baseItems, itemDb, ringPlacement.fingerSlots))
-              yield ringPlacement;
+            if (
+              comboMatchesItemCountRules(ringPlacement, rules, baseItems, itemDb, ringPlacement.fingerSlots) &&
+              comboMatchesMutualExclusionRules(ringPlacement, rules, baseItems, itemDb, ringPlacement.fingerSlots)
+            ) yield ringPlacement;
           }
         } else {
           placed.fingerSlots =
             rings.length === 2 ? ["Finger 1", "Finger 2"] : [];
-          if (comboMatchesItemCountRules(placed, rules, baseItems, itemDb, placed.fingerSlots))
-            yield placed;
+          if (
+            comboMatchesItemCountRules(placed, rules, baseItems, itemDb, placed.fingerSlots) &&
+            comboMatchesMutualExclusionRules(placed, rules, baseItems, itemDb, placed.fingerSlots)
+          ) yield placed;
         }
         return;
       }
@@ -350,6 +469,9 @@
     comboItemReferenceCount,
     comboMatchesRules,
     comboMatchesItemCountRules,
+    candidateSetDefinitions,
+    comboEntityReferencePresent,
+    comboMatchesMutualExclusionRules,
     candidateSizeRange,
     countCandidateRange,
     comboWeaponCompatible,

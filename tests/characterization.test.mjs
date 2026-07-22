@@ -227,6 +227,26 @@ test("legacy weight breakpoint exports migrate into the matching cap rule", () =
   );
 });
 
+
+
+test("candidate count zero includes the base setup whenever the comparison permits it", () => {
+  const helm = item("Head", {}, { candidateKey: "helm" });
+  const runtime = createRuntime(baseState());
+
+  assert.equal(runtime.countCandidateRange([helm], 0, "exactly"), 1n);
+  assert.equal(runtime.countCandidateRange([helm], 0, "atmost"), 1n);
+  assert.equal(runtime.countCandidateRange([helm], 0, "atleast"), 2n);
+
+  assert.equal([...runtime.iterateCandidateRange([helm], 0, "exactly")].length, 1);
+  assert.equal([...runtime.iterateCandidateRange([helm], 0, "atmost")].length, 1);
+  assert.equal([...runtime.iterateCandidateRange([helm], 0, "atleast")].length, 2);
+});
+
+test("candidate count input accepts zero without falling back to one", () => {
+  assert.match(html, /id="comboCount" type="number" min="0" value="1"/);
+  assert.match(script, /configureIntegerField\(\$\("#comboCount"\), "Candidate count", \{ min: 0 \}\)/);
+  assert.doesNotMatch(script, /Math\.max\(1, Math\.floor\(n\(\$\("#comboCount"\)/);
+});
 test("candidate set rules require all selected set members or none", () => {
   const weapon = item("Main hand", {}, { candidateKey: "weapon" });
   const shield = item("Off hand", {}, { candidateKey: "shield" });
@@ -702,4 +722,55 @@ test("current setup persistence chunks cookies and falls back to local storage",
     ).candidates.length,
     30,
   );
+});
+
+
+test("mutual exclusion rules reject combinations containing both selected entities", () => {
+  const state = baseState({ items: modules.model.normalizeFixedItems([]) });
+  state.items.find((item) => item.slot === "Head").id = "base-head";
+  state.candidates = [
+    item("Head", {}, { candidateKey: "candidate-head" }),
+    item("Neck", {}, { candidateKey: "candidate-neck" }),
+  ];
+  state.comboRules = [{
+    type: "mutualExclusion",
+    leftRef: "base:Head",
+    rightRef: `candidate:${state.candidates[1].candidateKey}`,
+  }];
+  const combos = [...modules.combinations.iterateCandidateRange(
+    state.candidates,
+    0,
+    "atleast",
+    { rules: state.comboRules, baseItems: state.items, itemDb: {} },
+  )];
+  assert.equal(combos.some((combo) => combo.some((item) => item.slot === "Neck") && !combo.some((item) => item.slot === "Head")), false);
+  assert.equal(modules.combinations.countCandidateRange(
+    state.candidates,
+    0,
+    "atleast",
+    { rules: state.comboRules, baseItems: state.items, itemDb: {} },
+  ), BigInt(combos.length));
+});
+
+test("mutual exclusion rules support candidate sets as an entity", () => {
+  const state = baseState({ items: modules.model.normalizeFixedItems([]) });
+  state.candidates = [item("Main hand", {}, { candidateKey: "weapon" }), item("Off hand", {}, { candidateKey: "shield" }), item("Head", {}, { candidateKey: "helm" })];
+  const setKey = "weapon-pair";
+  state.comboRules = [
+    { type: "candidateSet", setKey, candidateKeys: state.candidates.slice(0, 2).map((item) => item.candidateKey) },
+    { type: "mutualExclusion", leftRef: `set:${setKey}`, rightRef: `candidate:${state.candidates[2].candidateKey}` },
+  ];
+  const combos = [...modules.combinations.iterateCandidateRange(
+    state.candidates,
+    0,
+    "atleast",
+    { rules: state.comboRules, baseItems: state.items, itemDb: {} },
+  )];
+  assert.equal(combos.some((combo) => combo.length === 3), false);
+  assert.equal(modules.combinations.countCandidateRange(
+    state.candidates,
+    0,
+    "atleast",
+    { rules: state.comboRules, baseItems: state.items, itemDb: {} },
+  ), BigInt(combos.length));
 });

@@ -47,11 +47,16 @@
     return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   }
 
-  let candidateKeySequence = 0;
+  let candidateKeySequence = 0, ruleKeySequence = 0;
 
   function createCandidateKey() {
     candidateKeySequence += 1;
     return `candidate-${Date.now().toString(36)}-${candidateKeySequence.toString(36)}`;
+  }
+
+  function createRuleKey(prefix = "rule") {
+    ruleKeySequence += 1;
+    return `${prefix}-${Date.now().toString(36)}-${ruleKeySequence.toString(36)}`;
   }
 
   function blankItem(slot = "Item") {
@@ -179,5 +184,6 @@
     normalizeCandidate,
     normalizeCaps,
     createCandidateKey,
+    createRuleKey,
   });
 })(globalThis);

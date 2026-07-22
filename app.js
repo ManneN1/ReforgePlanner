@@ -34,6 +34,7 @@
         normalizeCandidate,
         normalizeCaps,
         createCandidateKey,
+        createRuleKey,
       } = ReforgePlanner.model;
       const {
         clearItem: clearSlotItem,
@@ -1039,9 +1040,20 @@
             .map((candidate, candidateIndex) => ({
               ref: `candidate:${candidate.candidateKey}`,
               label: `Candidate — ${candidate.slot}: ${candidate.name?.trim() && candidate.name !== "Candidate item" ? candidate.name.trim() : `Candidate ${candidateIndex + 1}`}`,
+            }));
+        state.comboRules
+          .filter((rule) => rule.type === "candidateSet")
+          .forEach((rule) => { rule.setKey ||= createRuleKey("candidate-set"); });
+        const candidateSetOptions = state.comboRules
+            .filter((rule) => rule.type === "candidateSet")
+            .map((rule, setIndex) => ({
+              ref: `set:${rule.setKey}`,
+              label: `Candidate Set ${setIndex + 1}`,
             })),
           itemOptions = [...baseItemOptions, ...candidateItemOptions],
+          entityOptions = [...itemOptions, ...candidateSetOptions],
           availableItemRefs = new Set(itemOptions.map((option) => option.ref)),
+          availableEntityRefs = new Set(entityOptions.map((option) => option.ref)),
           box = $("#comboRules");
         box.innerHTML = "";
         state.comboRules.forEach((rule, index) => {
@@ -1050,7 +1062,46 @@
             error = el("div", { className: "rule-error" });
           let validateRule;
 
-          if (rule.type === "itemCount") {
+          if (rule.type === "mutualExclusion") {
+            rule.leftRef = availableEntityRefs.has(rule.leftRef) ? rule.leftRef : "";
+            rule.rightRef = availableEntityRefs.has(rule.rightRef) ? rule.rightRef : "";
+            const createEntitySelect = (value, title) => {
+              const select = el("select", { title });
+              select.append(el("option", { value: "" }, "Select item or set"));
+              entityOptions.forEach((option) =>
+                select.append(el("option", {
+                  value: option.ref,
+                  selected: option.ref === value,
+                }, option.label)),
+              );
+              return select;
+            };
+            const left = createEntitySelect(rule.leftRef, "First mutually exclusive item or set"),
+              right = createEntitySelect(rule.rightRef, "Second mutually exclusive item or set");
+            validateRule = () => {
+              let message = "";
+              if (!rule.leftRef || !rule.rightRef)
+                message = "Select both mutually exclusive items or sets.";
+              else if (rule.leftRef === rule.rightRef)
+                message = "Choose two different items or sets.";
+              row.classList.toggle("invalid", Boolean(message));
+              left.classList.toggle("invalid", !rule.leftRef || rule.leftRef === rule.rightRef);
+              right.classList.toggle("invalid", !rule.rightRef || rule.leftRef === rule.rightRef);
+              error.textContent = message;
+              return !message;
+            };
+            left.onchange = () => {
+              rule.leftRef = left.value;
+              validateRule();
+              updateComboEstimate();
+            };
+            right.onchange = () => {
+              rule.rightRef = right.value;
+              validateRule();
+              updateComboEstimate();
+            };
+            row.append(left, el("span", {}, "is mutually exclusive with"), right);
+          } else if (rule.type === "itemCount") {
             rule.method = ["atleast", "atmost", "exactly"].includes(rule.method)
               ? rule.method
               : "atleast";
@@ -1144,6 +1195,7 @@
             row.append(method, value, el("span", {}, "from"), items);
             updateSummary();
           } else if (rule.type === "candidateSet") {
+            rule.setKey ||= createRuleKey("candidate-set");
             rule.candidateKeys = [...new Set(rule.candidateKeys || [])].filter((key) =>
               candidateKeys.has(key),
             );
@@ -1416,14 +1468,14 @@
         }
         const count = Math.max(
           1,
-          Math.floor(n($("#comboCount")?.value || state.comboCount || 1)),
+          Math.floor(n($("#comboCount")?.value ?? state.comboCount ?? 1)),
         );
         state.comboCount = count;
         const method =
           $("#comboMethod")?.value || state.comboMethod || "exactly";
         state.comboMethod = method;
         const valid = (state.candidates || []).filter(candidateIsUsable);
-        if (!valid.length && method !== "atmost") {
+        if (!valid.length && !(count === 0 || method === "atmost")) {
           $("#comboEstimate").textContent = "Add candidates to begin.";
           return;
         }
@@ -1478,7 +1530,7 @@
           items: fixedSlotItems(x.items),
           candidates: (x.candidates || []).map(normalizeCandidate),
           comboRules: x.comboRules || [],
-          comboCount: x.comboCount || 1,
+          comboCount: Math.max(0, Math.floor(n(x.comboCount ?? 1))),
           comboMethod: x.comboMethod || "exactly",
         };
         enforceWeaponRules();
@@ -1486,7 +1538,7 @@
         renderBaseline();
         renderCaps();
         renderGear();
-        $("#comboCount").value = state.comboCount || 1;
+        $("#comboCount").value = state.comboCount ?? 1;
         $("#comboMethod").value = state.comboMethod || "exactly";
         renderCandidates();
         renderComboRules();
@@ -1635,6 +1687,15 @@
         });
         renderComboRules();
       };
+      $("#addMutualExclusionRule").onclick = () => {
+        state.comboRules ??= [];
+        state.comboRules.push({
+          type: "mutualExclusion",
+          leftRef: "",
+          rightRef: "",
+        });
+        renderComboRules();
+      };
       $("#comboCount").oninput = () => updateComboEstimate();
       $("#comboMethod").onchange = () => updateComboEstimate();
       $("#stopCombos").onclick = () => {
@@ -1647,7 +1708,7 @@
           stopButton = $("#stopCombos"),
           spinner = $("#comboSpinner"),
           progress = $("#comboProgress"),
-          count = Math.max(1, Math.floor(n($("#comboCount").value))),
+          count = Math.max(0, Math.floor(n($("#comboCount").value))),
           method = $("#comboMethod").value;
         if (!reportInvalidWithin("#comboLab") || !validateComboRules(true)) {
           $("#status").textContent =
@@ -1862,7 +1923,7 @@
         $("#toggleResults").textContent = collapsed ? "Expand ▾" : "Minimize ▴";
         $("#toggleResults").setAttribute("aria-expanded", String(!collapsed));
       };
-      configureIntegerField($("#comboCount"), "Candidate count", { min: 1 });
+      configureIntegerField($("#comboCount"), "Candidate count", { min: 0 });
       let restoredCurrentSetup = false;
       try {
         const savedSetup = loadCurrentSetup();
@@ -1878,7 +1939,7 @@
         renderBaseline();
         renderCaps();
         renderGear();
-        $("#comboCount").value = state.comboCount || 1;
+        $("#comboCount").value = state.comboCount ?? 1;
         $("#comboMethod").value = state.comboMethod || "exactly";
         renderCandidates();
         renderComboRules();
